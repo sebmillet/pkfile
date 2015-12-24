@@ -157,8 +157,17 @@ pkctrl_t *pkctrl_construct(FILE *f, ssize_t file_size)
 
 void pkctrl_destruct(pkctrl_t *ctrl)
 {
+	if (ctrl->tail != NULL) {
+		if (ctrl->tail->type != E_ERROR)
+			FATAL_ERROR("%s", "ctrl->tail should be NULL!");
+		do {
+			seq_t *to_free = ctrl->tail;
+			ctrl->tail = ctrl->tail->parent;
+			free(to_free);
+		} while (ctrl->tail != NULL);
+	}
 	if (ctrl->tail != NULL)
-		FATAL_ERROR("%s", "ctrl->tail should be NULL!");
+		FATAL_ERROR("%s", "Cette fois-ci c'est encore plus grave ! Incohérence à l'intérieur de pkctrl_destruct()!");
 	free(ctrl);
 }
 
