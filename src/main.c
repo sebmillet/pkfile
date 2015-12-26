@@ -30,6 +30,22 @@
 #include "common.h"
 #include "pkfile.h"
 
+static const char *tree_strings[] = {
+	"└── ",	/* T_NORTH_EAST */
+	"    ",	/* T_BLANK */
+	"├── ",	/* T_NORTH_SOUTH_EAST */
+	"│   ",	/* T_NORTH_SOUTH */
+	"",		/* T_EMPTY */
+};
+
+	/*
+	 * The der "SEQUENCE" or "SET OF" provide a hierarchical
+	 * structure where we have a straightforward "level" notion
+	 * (= number of hops to the chain head).
+	 *
+	 * A value of -1 means there is no limit.
+	 * */
+int max_depth = -1;
 char *file_in = NULL;
 char *file_out = NULL;
 
@@ -161,7 +177,10 @@ static void usage()
 	fprintf(stderr, "Extract sequences of PKCS files.\n");
 	fprintf(stderr, "  -h  --help     print this usage and exit\n");
 	fprintf(stderr, "  -V  --verbose  verbose output\n");
+	fprintf(stderr, "  -D  --debug    debug output\n");
 	fprintf(stderr, "  -v  --version  print version information and exit\n");
+	fprintf(stderr, "  -d  --depth n  set max depth to n (default: -1)\n");
+	fprintf(stderr, "                 -1 = no maximum depth\n");
 	fprintf(stderr, "  -o  --out      output to file\n");
 	fprintf(stderr, "  --             end of parameters, next option is file name\n");
 	fprintf(stderr, "If FILE is not specified, read standard input.\n");
@@ -181,7 +200,7 @@ static void version()
 
 static void opt_check(unsigned int n, const char *opt)
 {
-	static int defined_options[3] = {0, 0, 0};
+	static int defined_options[4] = {0, 0, 0, 0};
 
 	assert(n < sizeof(defined_options) / sizeof(*defined_options));
 
@@ -241,13 +260,17 @@ if (++a >= argc) { \
 		} else if (!strcmp(argv[a], "--verbose") || !strcmp(argv_a_short, "-V")) {
 			opt_check(0, argv[a]);
 			out_level = L_VERBOSE;
-		} else if (!strcmp(argv[a], "--debug") || !strcmp(argv_a_short, "-d")) {
+		} else if (!strcmp(argv[a], "--debug") || !strcmp(argv_a_short, "-D")) {
 			opt_check(1, argv[a]);
 			optset_debug = TRUE;
 		} else if (!strcmp(argv[a], "--out") || !strcmp(argv_a_short, "-o")) {
 			opt_check(2, argv[a]);
 			OPT_WITH_VALUE_CHECK
 			file_out = argv[a];
+		} else if (!strcmp(argv[a], "--depth") || !strcmp(argv_a_short, "-d")) {
+			opt_check(3, argv[a]);
+			OPT_WITH_VALUE_CHECK
+			max_depth = atoi(argv[a]);
 		} else if (argv[a][0] == '-') {
 			if (strcmp(argv[a], "--")) {
 				fprintf(stderr, "%s: invalid option -- '%s'\n", PACKAGE_NAME, argv[a]);
@@ -292,40 +315,81 @@ int main(int argc, char **argv)
 {
 	parse_options(argc, argv);
 
-	FILE *file;
+	FILE *fin;
 	ssize_t size;
 	if (file_in == NULL) {
-		file = stdin;
-		size = -1;
 		out_dbg("Reading from stdin\n");
+		fin = stdin;
+		size = -1;
 	} else {
+		out_dbg("Reading from file %s\n", file_in);
 		if ((size = file_get_size(file_in)) < 0) {
 			outln_errno(errno);
 			exit(-2);
 		}
-		if ((file = fopen(file_in, "rb")) == NULL) {
+		if ((fin = fopen(file_in, "rb")) == NULL) {
 			outln_errno(errno);
 			exit(-3);
 		}
-		out_dbg("Reading from file %s\n", file_in);
 	}
-	pkctrl_t *ctrl = pkctrl_construct(file, size);
+	pkctrl_t *ctrl = pkctrl_construct(fin, size);
+
+	FILE *fout;
+	if (file_out == NULL) {
+		out_dbg("Output to stdout\n");
+		fout = stdout;
+	} else {
+		out_dbg("Output to file %s\n", file_out);
+		if ((fout = fopen(file_out, "wb")) == NULL) {
+			outln_errno(errno);
+			exit(-4);
+		}
+	}
+	if (file_in != NULL)
+		fprintf(fout, "%s\n", file_in);
+	else
+		fprintf(fout, "(stdin)\n");
 
 	seq_t *seq;
 	for (seq = seq_next(ctrl); seq != NULL && seq->type != E_ERROR; seq = seq_next(ctrl)) {
-		if (seq->level > 3) continue;
-		printf("Level %02d", seq->level);
-		int i;
-		for (i = 0; i < seq->level; ++i) {
-			printf("  ");
+
+		if (max_depth >= 0 && seq->level > max_depth) continue;
+
+		fprintf(fout, "%06X  ", (unsigned int)seq->offset);
+
+		int n = 0;
+		seq_t *s;
+
+		char buf1[100];
+		buf1[0] = '\0';
+		char buf2[10];
+		for (s = pkctrl_head(ctrl); s != NULL && s->child != NULL; s = s->child) {
+			assert(n == s->level);
+			++n;
+
+			if (n == 1) {
+				snprintf(buf2, sizeof(buf2), "%d", s->index);
+			} else {
+				snprintf(buf2, sizeof(buf2), ".%d", s->index);
+			}
+			s_strncat(buf1, buf2, sizeof(buf1));
 		}
-		printf("index: %d, type: %d, len: %li\n", seq->parent->index, (int)seq->type, seq->length);
+		fprintf(fout, "%-15s  ", buf1);
+
+		for (s = pkctrl_head(ctrl); s != NULL; s = s->child) {
+			assert(s->tree >= 0 && s->tree < sizeof(tree_strings) / sizeof(*tree_strings));
+			fputs(tree_strings[s->tree], fout);
+		}
+		fprintf(fout, "len: %li (%li+%li)\n", seq->total_len, seq->header_len, seq->data_len);
 	}
 	if (seq != NULL && seq->type == E_ERROR) {
 		outln_error(seq->errmsg);
+		seq_clear_error(seq);
 	}
 	pkctrl_destruct(ctrl);
+	if (file_out != NULL)
+		fclose(fout);
 	if (file_in != NULL)
-		fclose(file);
+		fclose(fin);
 }
 

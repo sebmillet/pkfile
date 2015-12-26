@@ -24,7 +24,7 @@
 
 struct pkctrl_t {
 	FILE *f;
-	int level;
+	size_t offset;
 	seq_t *head;
 	seq_t *tail;
 };
@@ -66,7 +66,8 @@ typedef struct {
 	int class;
 	type_t type;
 	int number;
-	unsigned long length;
+	unsigned long len;	/* Size of tag itself */
+	unsigned long dlen;	/* Value coded by the tag */
 } tag_t;
 
 static tag_univ_t univ_tags[] = {
@@ -120,10 +121,12 @@ static void get_tag_name(char *s, const size_t slen, const int tag_class, const 
 	}
 }
 
-static seq_t *seq_construct_and_attach_to_chain(seq_t *parent, ssize_t length)
+static seq_t *seq_construct_and_attach_to_chain(seq_t *parent)
 {
 	seq_t *seq = (seq_t *)malloc(sizeof(seq_t));
-	seq->length = length;
+	seq->header_len = -1;
+	seq->data_len = -1;
+	seq->total_len = -1;
 	seq->index = 0;
 	seq->data = NULL;
 	seq->consumed = 0;
@@ -135,8 +138,16 @@ static seq_t *seq_construct_and_attach_to_chain(seq_t *parent, ssize_t length)
 		seq->level = seq->parent->level + 1;
 		seq->parent->child = seq;
 	}
+	seq->offset = 0;
 	out_dbg("++ Adding one seq_t level, current level = %d\n", seq->level);
 	return seq;
+}
+
+static void seq_set_len(seq_t *s, ssize_t header_len, ssize_t data_len)
+{
+	s->header_len = header_len;
+	s->data_len = data_len;
+	s->total_len = header_len + data_len;
 }
 
 void seq_destruct(seq_t *seq)
@@ -146,12 +157,23 @@ void seq_destruct(seq_t *seq)
 	free(seq);
 }
 
+void seq_clear_error(seq_t *seq)
+{
+	if (seq->type != E_ERROR)
+		FATAL_ERROR("%s", "seq_clear_error(): call without error condition!");
+	if (seq->errmsg == NULL)
+		FATAL_ERROR("%s", "seq_clear_error(): error condition but no error message!");
+	free(seq->errmsg);
+}
+
 pkctrl_t *pkctrl_construct(FILE *f, ssize_t file_size)
 {
 	pkctrl_t *ctrl = (pkctrl_t *)malloc(sizeof(pkctrl_t));
 	ctrl->f = f;
-	ctrl->tail = seq_construct_and_attach_to_chain(NULL, file_size);
+	ctrl->tail = seq_construct_and_attach_to_chain(NULL);
+	seq_set_len(ctrl->tail, 0, file_size);
 	ctrl->head = ctrl->tail;
+	ctrl->offset = 0;
 	return ctrl;
 }
 
@@ -163,7 +185,7 @@ void pkctrl_destruct(pkctrl_t *ctrl)
 		do {
 			seq_t *to_free = ctrl->tail;
 			ctrl->tail = ctrl->tail->parent;
-			free(to_free);
+			seq_destruct(to_free);
 		} while (ctrl->tail != NULL);
 	}
 	if (ctrl->tail != NULL)
@@ -171,11 +193,18 @@ void pkctrl_destruct(pkctrl_t *ctrl)
 	free(ctrl);
 }
 
+seq_t *pkctrl_head(const pkctrl_t *ctrl)
+{
+	return ctrl->head;
+}
+
 seq_t *seq_next(pkctrl_t *ctrl)
 {
+	const char *prefix = "offset %lu: ";
 	char *errmsg = "unexpected end of file";
+	size_t erroffset = ctrl->offset;
 
-	while ((ctrl->tail->length >= 0 && ctrl->tail->consumed >= ctrl->tail->length) || feof(ctrl->f)) {
+	while ((ctrl->tail->data_len >= 0 && ctrl->tail->consumed >= ctrl->tail->total_len) || feof(ctrl->f)) {
 		if (feof(ctrl->f)) {
 			if (ctrl->tail->parent == NULL) {
 				seq_destruct(ctrl->tail);
@@ -187,7 +216,7 @@ seq_t *seq_next(pkctrl_t *ctrl)
 			}
 		}
 		out_dbg("-- Removing one seq_t level\n");
-		if (ctrl->tail->consumed > ctrl->tail->length) {
+		if (ctrl->tail->consumed > ctrl->tail->total_len) {
 			errmsg = "data size inside sequence exceeds sequence size";
 			goto error;
 		}
@@ -203,20 +232,26 @@ seq_t *seq_next(pkctrl_t *ctrl)
 	}
 	ctrl->tail->index++;
 
-	ssize_t consumed = 0;
+	ctrl->tail = seq_construct_and_attach_to_chain(ctrl->tail);
+	ctrl->tail->offset = ctrl->offset;
+
+	size_t cons = 0;
 
 	int c;
 	if ((c = fgetc(ctrl->f)) == EOF) {
-		if (ctrl->tail->length < 0 && ctrl->tail->parent == NULL) {
+		if (ctrl->tail->data_len < 0 && (ctrl->tail->parent == NULL || ctrl->tail->parent->parent == NULL)) {
 				/* Input was stdin thus size was unknown => not an error */
 			seq_destruct(ctrl->tail);
 			ctrl->tail = NULL;
 			return NULL;
 		}
+		out_dbg("ctrl->tail->data_len = %li\n", ctrl->tail->data_len);
+		out_dbg("ctrl->tail->parent = %lu\n", ctrl->tail->parent);
 		out_dbg("end of file encountered (2)\n");
 		goto error;
 	}
-	++consumed;
+	cons++;
+	erroffset = ctrl->offset + cons;
 
 	tag_t tag;
 	tag.class = (c & 0xc0) >> 6;
@@ -240,7 +275,8 @@ seq_t *seq_next(pkctrl_t *ctrl)
 				out_dbg("end of file encountered (3)\n");
 				goto error;
 			}
-			++consumed;
+			++cons;
+			erroffset = ctrl->offset + cons;
 			buflength[pos] = (char)c;
 		} while (buflength[pos] & 0x80 && ++pos < TAG_U_LONG_FORMAT_MAX_BYTES);
 		if (pos == sizeof(buflength)) {
@@ -281,9 +317,12 @@ seq_t *seq_next(pkctrl_t *ctrl)
 		out_dbg("end of file encountered (4)\n");
 		goto error;
 	}
-	++consumed;
+
+	++cons;
+	erroffset = ctrl->offset + cons;
+
 	int n = 0;
-	tag.length = (unsigned long)cc;
+	tag.dlen = (unsigned long)cc;
 	if (cc & 0x80) {
 		n = (cc & 0x7F);
 		if (n > LENGTH_MULTIBYTES_MAX_BYTES - 1) {
@@ -293,39 +332,42 @@ seq_t *seq_next(pkctrl_t *ctrl)
 			errmsg = "number of bytes to encode length cannot be null";
 			goto error;
 		}
-		tag.length = 0;
+		tag.dlen = 0;
 		int i;
 		for (i = 1; i <= n; ++i) {
 			if ((cc = fgetc(ctrl->f)) == EOF) {
 				out_dbg("end of file encountered (5)\n");
 				goto error;
 			}
-			++consumed;
-			tag.length <<= 8;
-			tag.length += (unsigned int)cc;
+			++cons;
+			erroffset = ctrl->offset + cons;
+			tag.dlen <<= 8;
+			tag.dlen += (unsigned int)cc;
 		}
 	}
-	out_dbg("Length: %lu\n", tag.length);
+	out_dbg("Length: %lu\n", tag.dlen);
 
 	char tag_name[100];
 	get_tag_name(tag_name, sizeof(tag_name), tag.class, tag.number);
 	out_dbg("%s-%s: %s, len: %lu\n",
-			short_classes[tag.class], short_types[original_type], tag_name, tag.length);
+			short_classes[tag.class], short_types[original_type], tag_name, tag.dlen);
 
-	ctrl->tail->consumed += consumed;
-	consumed = 0;
-
-	ctrl->tail = seq_construct_and_attach_to_chain(ctrl->tail, tag.length);
+		/* Useless (already calculated), left here for the sake of robustness */
+	erroffset = ctrl->offset + cons;
+	tag.len = cons;
+/*    ctrl->tail = seq_construct_and_attach_to_chain(ctrl->tail, tag.len, tag.dlen);*/
+	seq_set_len(ctrl->tail, tag.len, tag.dlen);
 
 	if (tag.type == T_PRIM) {
 		ctrl->tail->type = E_DATA;
-		if (tag.length >= 1) {
-			ctrl->tail->data = (char *)malloc(tag.length);
+		if (tag.dlen >= 1) {
+			ctrl->tail->data = (char *)malloc(tag.dlen);
 			size_t nbread;
-			nbread = fread(ctrl->tail->data, 1, (size_t)tag.length, ctrl->f);
-			consumed += nbread;
+			nbread = fread(ctrl->tail->data, 1, (size_t)tag.dlen, ctrl->f);
+			cons += nbread;
+			erroffset = ctrl->offset + cons;
 
-			if (nbread != tag.length) {
+			if (nbread != tag.dlen) {
 				if (feof(ctrl->f)) {
 					out_dbg("end of file encountered (6)\n");
 					goto error;
@@ -338,13 +380,36 @@ seq_t *seq_next(pkctrl_t *ctrl)
 	} else { /* tag->type == T_CONS */
 		ctrl->tail->type = E_META;
 	}
-	ctrl->tail->consumed += consumed;
+	ctrl->offset += cons;
+	ctrl->tail->consumed += cons;
+
+	seq_t *s = ctrl->tail;
+	ssize_t virtual_consumed = 0;
+	s->tree = T_EMPTY;
+	while (s->parent != NULL) {
+		virtual_consumed = s->total_len;
+		if (s->parent->consumed + virtual_consumed == s->parent->total_len) {
+			if (s->child == NULL)
+				s->parent->tree = T_NORTH_EAST;
+			else
+				s->parent->tree = T_BLANK;
+		} else {
+			if (s->child == NULL)
+				s->parent->tree = T_NORTH_SOUTH_EAST;
+			else
+				s->parent->tree = T_NORTH_SOUTH;
+		}
+		s = s->parent;
+	}
 
 	return ctrl->tail;
 
 error:
 	ctrl->tail->type = E_ERROR;
-	ctrl->tail->errmsg = errmsg;
+	size_t l = strlen(prefix) + strlen(errmsg) + 30;
+	ctrl->tail->errmsg = malloc(l);
+	snprintf(ctrl->tail->errmsg, l, prefix, erroffset);
+	s_strncat(ctrl->tail->errmsg, errmsg, l);
 	return ctrl->tail;
 }
 
