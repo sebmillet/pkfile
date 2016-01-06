@@ -32,14 +32,26 @@ typedef enum {
 struct seq_t;
 typedef struct seq_t seq_t;
 
+	/* Includes the initial byte of tag number 31 */
+#define TAG_U_LONG_FORMAT_MAX_BYTES 6
+	/* Includes the initial byte that indicates the number of bytes used to encode length */
+#define LENGTH_MULTIBYTES_MAX_BYTES 7
+#define TAG_MAX_HLENGTH (TAG_U_LONG_FORMAT_MAX_BYTES + LENGTH_MULTIBYTES_MAX_BYTES)
+
+#define MAX_TAG_NAME 100
+
 struct seq_t {
 	entry_t type;
-	ssize_t data_len;
 	ssize_t header_len;
+	ssize_t data_len;
 	ssize_t total_len;
 	int level;
 	int index;
 
+	const char *tag_type;
+	char tag_name[MAX_TAG_NAME];
+
+	char header[TAG_MAX_HLENGTH];
 	char *data;   /* Used with E_DATA */
 	char *errmsg; /* Used with E_ERROR */
 

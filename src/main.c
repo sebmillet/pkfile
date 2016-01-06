@@ -31,11 +31,11 @@
 #include "pkfile.h"
 
 static const char *tree_strings[] = {
-	"└── ",	/* T_NORTH_EAST */
-	"    ",	/* T_BLANK */
-	"├── ",	/* T_NORTH_SOUTH_EAST */
-	"│   ",	/* T_NORTH_SOUTH */
-	"",		/* T_EMPTY */
+	"└── ", /* T_NORTH_EAST */
+	"    ", /* T_BLANK */
+	"├── ", /* T_NORTH_SOUTH_EAST */
+	"│   ", /* T_NORTH_SOUTH */
+	"",     /* T_EMPTY */
 };
 
 	/*
@@ -106,7 +106,7 @@ int out(int level, const char *fmt, ...)
 	}
 }
 
-int out_dbg_core(const char *filename, int line, const char *fmt, ...)
+int dbg_core(const char *filename, int line, const char *fmt, ...)
 {
 	if (out_level >= L_DEBUG) {
 		out(L_DEBUG, "%s:%d\t", filename, line);
@@ -157,7 +157,7 @@ char *s_strncpy(char *dest, const char *src, size_t n)
 
 char *s_strncat(char *dest, const char *src, size_t n)
 {
-	strncat(dest, src, n);
+	strncat(dest, src, n - 1);
 	dest[n - 1] = '\0';
 	return dest;
 }
@@ -318,11 +318,11 @@ int main(int argc, char **argv)
 	FILE *fin;
 	ssize_t size;
 	if (file_in == NULL) {
-		out_dbg("Reading from stdin\n");
+		DBG("Reading from stdin\n")
 		fin = stdin;
 		size = -1;
 	} else {
-		out_dbg("Reading from file %s\n", file_in);
+		DBG("Reading from file %s\n", file_in)
 		if ((size = file_get_size(file_in)) < 0) {
 			outln_errno(errno);
 			exit(-2);
@@ -336,15 +336,17 @@ int main(int argc, char **argv)
 
 	FILE *fout;
 	if (file_out == NULL) {
-		out_dbg("Output to stdout\n");
+		DBG("Output to stdout\n")
 		fout = stdout;
 	} else {
-		out_dbg("Output to file %s\n", file_out);
+		DBG("Output to file %s\n", file_out)
 		if ((fout = fopen(file_out, "wb")) == NULL) {
 			outln_errno(errno);
 			exit(-4);
 		}
 	}
+	fprintf(fout, "%06X  ", 0);
+	fprintf(fout, "%17s", "");
 	if (file_in != NULL)
 		fprintf(fout, "%s\n", file_in);
 	else
@@ -380,7 +382,36 @@ int main(int argc, char **argv)
 			assert(s->tree >= 0 && s->tree < sizeof(tree_strings) / sizeof(*tree_strings));
 			fputs(tree_strings[s->tree], fout);
 		}
-		fprintf(fout, "len: %li (%li+%li)\n", seq->total_len, seq->header_len, seq->data_len);
+		fprintf(fout, "%s: %s, len: %li (%li+%li)\n", seq->tag_type, seq->tag_name, seq->total_len, seq->header_len, seq->data_len);
+		if (seq->type == E_DATA) {
+			int i;
+			for (i = 0; i < seq->header_len + seq->data_len; ++i) {
+				if (!(i % 16)) {
+					fprintf(fout, "%25s", " ");
+					for (s = pkctrl_head(ctrl); s != NULL; s = s->child) {
+						tree_t t = s->tree;
+						assert(t >= 0 && t < sizeof(tree_strings) / sizeof(*tree_strings));
+						if (t == T_NORTH_EAST)
+							t = T_BLANK;
+						else if (t == T_NORTH_SOUTH_EAST)
+							t = T_NORTH_SOUTH;
+						fputs(tree_strings[t], fout);
+					}
+					fputs("      ", fout);
+				}
+				unsigned char c;
+				if (i < seq->header_len)
+					c = seq->header[i];
+				else
+					c = seq->data[i - seq->header_len];
+				fprintf(fout, "%02X", c);
+				if (!((i + 1) % 16))
+					fprintf(fout, "\n");
+				else if (!((i + 1) % 4))
+					fprintf(fout, "  ");
+			}
+			fputs("\n", fout);
+		}
 	}
 	if (seq != NULL && seq->type == E_ERROR) {
 		outln_error(seq->errmsg);

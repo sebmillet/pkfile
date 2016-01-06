@@ -40,11 +40,6 @@ static const char *short_classes[] = {
 #define TAG_CLASS_CONTEXT_SPECIFIC 2
 #define TAG_CLASS_PRIVATE          3
 
-	/* Includes the initial byte of tag number 31 */
-#define TAG_U_LONG_FORMAT_MAX_BYTES 6
-	/* Includes the initial byte that indicates the number of bytes used to encode length */
-#define LENGTH_MULTIBYTES_MAX_BYTES 7
-
 static const char *short_types[] = {
 	"prim", /* T_PRIM */
 	"cons"  /* T_CONS */
@@ -66,8 +61,8 @@ typedef struct {
 	int class;
 	type_t type;
 	int number;
-	unsigned long len;	/* Size of tag itself */
-	unsigned long dlen;	/* Value coded by the tag */
+	unsigned long header_len;  /* Size of tag itself */
+	unsigned long data_len;    /* Value coded by the tag */
 } tag_t;
 
 static tag_univ_t univ_tags[] = {
@@ -139,7 +134,7 @@ static seq_t *seq_construct_and_attach_to_chain(seq_t *parent)
 		seq->parent->child = seq;
 	}
 	seq->offset = 0;
-	out_dbg("++ Adding one seq_t level, current level = %d\n", seq->level);
+	DBG("++ Adding one seq_t level, current level = %d\n", seq->level)
 	return seq;
 }
 
@@ -202,7 +197,8 @@ seq_t *seq_next(pkctrl_t *ctrl)
 {
 	const char *prefix = "offset %lu: ";
 	char *errmsg = "unexpected end of file";
-	size_t erroffset = ctrl->offset;
+
+	size_t cons = 0;
 
 	while ((ctrl->tail->data_len >= 0 && ctrl->tail->consumed >= ctrl->tail->total_len) || feof(ctrl->f)) {
 		if (feof(ctrl->f)) {
@@ -211,11 +207,11 @@ seq_t *seq_next(pkctrl_t *ctrl)
 				ctrl->tail = NULL;
 				return NULL;
 			} else {
-				out_dbg("end of file encountered (1)\n");
+				DBG("end of file encountered (1)\n")
 				goto error;
 			}
 		}
-		out_dbg("-- Removing one seq_t level\n");
+		DBG("-- Removing one seq_t level\n")
 		if (ctrl->tail->consumed > ctrl->tail->total_len) {
 			errmsg = "data size inside sequence exceeds sequence size";
 			goto error;
@@ -235,8 +231,6 @@ seq_t *seq_next(pkctrl_t *ctrl)
 	ctrl->tail = seq_construct_and_attach_to_chain(ctrl->tail);
 	ctrl->tail->offset = ctrl->offset;
 
-	size_t cons = 0;
-
 	int c;
 	if ((c = fgetc(ctrl->f)) == EOF) {
 		if (ctrl->tail->data_len < 0 && (ctrl->tail->parent == NULL || ctrl->tail->parent->parent == NULL)) {
@@ -245,13 +239,12 @@ seq_t *seq_next(pkctrl_t *ctrl)
 			ctrl->tail = NULL;
 			return NULL;
 		}
-		out_dbg("ctrl->tail->data_len = %li\n", ctrl->tail->data_len);
-		out_dbg("ctrl->tail->parent = %lu\n", ctrl->tail->parent);
-		out_dbg("end of file encountered (2)\n");
+		DBG("ctrl->tail->data_len = %li\n", ctrl->tail->data_len)
+		DBG("ctrl->tail->parent = %lu\n", ctrl->tail->parent)
+		DBG("end of file encountered (2)\n")
 		goto error;
 	}
 	cons++;
-	erroffset = ctrl->offset + cons;
 
 	tag_t tag;
 	tag.class = (c & 0xc0) >> 6;
@@ -264,22 +257,21 @@ seq_t *seq_next(pkctrl_t *ctrl)
 		outln_warning("primitive/constructed bit mismatch, enforcing primitive");
 	}
 
-	char buflength[TAG_U_LONG_FORMAT_MAX_BYTES + LENGTH_MULTIBYTES_MAX_BYTES];
-	buflength[0] = (char)c;
+	char *hh = ctrl->tail->header;
+	hh[0] = (char)c;
 	int pos = 0;
 	if (tag.number == TAG_U_LONG_FORMAT) {
 		pos = 1;
 
 		do {
 			if ((c = fgetc(ctrl->f)) == EOF) {
-				out_dbg("end of file encountered (3)\n");
+				DBG("end of file encountered (3)\n")
 				goto error;
 			}
 			++cons;
-			erroffset = ctrl->offset + cons;
-			buflength[pos] = (char)c;
-		} while (buflength[pos] & 0x80 && ++pos < TAG_U_LONG_FORMAT_MAX_BYTES);
-		if (pos == sizeof(buflength)) {
+			hh[pos] = (char)c;
+		} while (hh[pos] & 0x80 && ++pos < TAG_U_LONG_FORMAT_MAX_BYTES);
+		if (pos == TAG_MAX_HLENGTH) {
 			errmsg = "tag number too big";
 			goto error;
 		}
@@ -295,17 +287,17 @@ seq_t *seq_next(pkctrl_t *ctrl)
 			if (rev == 1)
 				bm1 = 0;
 			else
-				bm1 = (unsigned)buflength[rev - 1];
+				bm1 = (unsigned)hh[rev - 1];
 			rmask = (0x7Fu >> shift);
 			lmask = (0xFFu << (7 - shift)) & 0xFFu;
-			v0 = (long unsigned)(((bm1 << (7 - shift)) & lmask) | (((unsigned)buflength[rev] >> shift) & rmask));
+			v0 = (long unsigned)(((bm1 << (7 - shift)) & lmask) | (((unsigned)hh[rev] >> shift) & rmask));
 
 			value += v0 * multi;
 			multi *= 256;   /* Can be written <<8, but... */
 			++shift;
 		}
 		tag.number = (int)value;
-		out_dbg("Tag number: %i\n", tag.number);
+		DBG("Tag number: %i\n", tag.number)
 	}
 
 	if (tag.class == TAG_CLASS_UNIVERSAL && tag.number >= 31) {
@@ -314,15 +306,14 @@ seq_t *seq_next(pkctrl_t *ctrl)
 
 	int cc;
 	if ((cc = fgetc(ctrl->f)) == EOF) {
-		out_dbg("end of file encountered (4)\n");
+		DBG("end of file encountered (4)\n")
 		goto error;
 	}
 
 	++cons;
-	erroffset = ctrl->offset + cons;
 
 	int n = 0;
-	tag.dlen = (unsigned long)cc;
+	tag.data_len = (unsigned long)cc;
 	if (cc & 0x80) {
 		n = (cc & 0x7F);
 		if (n > LENGTH_MULTIBYTES_MAX_BYTES - 1) {
@@ -332,44 +323,38 @@ seq_t *seq_next(pkctrl_t *ctrl)
 			errmsg = "number of bytes to encode length cannot be null";
 			goto error;
 		}
-		tag.dlen = 0;
+		tag.data_len = 0;
 		int i;
 		for (i = 1; i <= n; ++i) {
 			if ((cc = fgetc(ctrl->f)) == EOF) {
-				out_dbg("end of file encountered (5)\n");
+				DBG("end of file encountered (5)\n")
 				goto error;
 			}
 			++cons;
-			erroffset = ctrl->offset + cons;
-			tag.dlen <<= 8;
-			tag.dlen += (unsigned int)cc;
+			tag.data_len <<= 8;
+			tag.data_len += (unsigned int)cc;
 		}
 	}
-	out_dbg("Length: %lu\n", tag.dlen);
+	DBG("Length: %lu\n", tag.data_len)
 
-	char tag_name[100];
-	get_tag_name(tag_name, sizeof(tag_name), tag.class, tag.number);
-	out_dbg("%s-%s: %s, len: %lu\n",
-			short_classes[tag.class], short_types[original_type], tag_name, tag.dlen);
+	get_tag_name(ctrl->tail->tag_name, sizeof(ctrl->tail->tag_name), tag.class, tag.number);
+	ctrl->tail->tag_type = short_types[original_type];
+	DBG("%s-%s: %s, len: %lu\n", short_classes[tag.class], short_types[original_type], ctrl->tail->tag_name, tag.data_len)
 
-		/* Useless (already calculated), left here for the sake of robustness */
-	erroffset = ctrl->offset + cons;
-	tag.len = cons;
-/*    ctrl->tail = seq_construct_and_attach_to_chain(ctrl->tail, tag.len, tag.dlen);*/
-	seq_set_len(ctrl->tail, tag.len, tag.dlen);
+	tag.header_len = cons;
+	seq_set_len(ctrl->tail, tag.header_len, tag.data_len);
 
 	if (tag.type == T_PRIM) {
 		ctrl->tail->type = E_DATA;
-		if (tag.dlen >= 1) {
-			ctrl->tail->data = (char *)malloc(tag.dlen);
+		if (tag.data_len >= 1) {
+			ctrl->tail->data = (char *)malloc(tag.data_len);
 			size_t nbread;
-			nbread = fread(ctrl->tail->data, 1, (size_t)tag.dlen, ctrl->f);
+			nbread = fread(ctrl->tail->data, 1, (size_t)tag.data_len, ctrl->f);
 			cons += nbread;
-			erroffset = ctrl->offset + cons;
 
-			if (nbread != tag.dlen) {
+			if (nbread != tag.data_len) {
 				if (feof(ctrl->f)) {
-					out_dbg("end of file encountered (6)\n");
+					DBG("end of file encountered (6)\n")
 					goto error;
 				} else {
 					errmsg = strerror(errno);
@@ -408,7 +393,7 @@ error:
 	ctrl->tail->type = E_ERROR;
 	size_t l = strlen(prefix) + strlen(errmsg) + 30;
 	ctrl->tail->errmsg = malloc(l);
-	snprintf(ctrl->tail->errmsg, l, prefix, erroffset);
+	snprintf(ctrl->tail->errmsg, l, prefix, ctrl->offset + cons);
 	s_strncat(ctrl->tail->errmsg, errmsg, l);
 	return ctrl->tail;
 }
