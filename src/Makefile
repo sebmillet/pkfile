@@ -9,7 +9,7 @@
 #     -fPIE -pie -Wl,-z,relro,-z,now
 CPP = gcc
 CPPFLAGS = -g -O2 -Wall -Wextra -Wuninitialized $(FORTIFYFLAGS)
-LINKERFLAGS = -g -O2 -Wall -Wextra -Wuninitialized $(FORTIFYFLAGS)
+LDFLAGS = -g -O2 -Wall -Wextra -Wuninitialized $(FORTIFYFLAGS) -lcrypto -lssl
 OFLAG = -o
 
 .SUFFIXES : .o .c .h
@@ -18,8 +18,8 @@ OFLAG = -o
 
 all : pkfile
 
-pkfile : pkfile.o main.o
-	$(CPP) $(LINKERFLAGS) $(OFLAG)$@ pkfile.o main.o
+pkfile : pkfile.o ppem.o main.o
+	$(CPP) $(OFLAG)$@ pkfile.o ppem.o main.o $(LDFLAGS)
 
 .PHONY: all clean mrproper
 

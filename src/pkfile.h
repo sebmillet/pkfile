@@ -67,7 +67,7 @@ struct seq_t {
 struct pkctrl_t;
 typedef struct pkctrl_t pkctrl_t;
 
-pkctrl_t *pkctrl_construct(FILE *f, ssize_t file_size);
+pkctrl_t *pkctrl_construct(const unsigned char *data_in, size_t data_in_len);
 void pkctrl_destruct(pkctrl_t *pkf);
 seq_t *pkctrl_head(const pkctrl_t *ctrl);
 

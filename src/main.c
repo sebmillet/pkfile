@@ -29,6 +29,7 @@
 
 #include "common.h"
 #include "pkfile.h"
+#include "ppem.h"
 
 static const char *tree_strings[] = {
 	"└── ", /* T_NORTH_EAST */
@@ -45,11 +46,13 @@ static const char *tree_strings[] = {
 	 *
 	 * A value of -1 means there is no limit.
 	 * */
-int max_depth = -1;
+int opt_max_depth = -1;
 char *file_in = NULL;
 char *file_out = NULL;
 
 int out_level = L_NORMAL;
+
+const char *opt_password = NULL;
 
 	/*
 	 * Needed by FATAL_ERROR macro
@@ -164,6 +167,22 @@ char *s_strncat(char *dest, const char *src, size_t n)
 	/* The define below triggers an error if usual strncat is used */
 #define strncat(a, b, c) ErrorDontUse_strncat_Use_s_strncat_Instead
 
+	/*
+	 * Returns a copied, allocated string. Uses s_strncpy for the string
+	 * copy (see comment above).
+	 * dst can be null, in which case the new string is to be retrieved
+	 * by the function return value.
+	 */
+char *s_alloc_and_copy(char **dst, const char *src)
+{
+	unsigned int s = strlen(src) + 1;
+	char *target = (char *)malloc(s);
+	s_strncpy(target, src, s);
+	if (dst)
+		*dst = target;
+	return target;
+}
+
 ssize_t file_get_size(const char* filename)
 {
 	struct stat st;
@@ -184,7 +203,7 @@ static void usage()
 	fprintf(stderr, "  -o  --out      output to file\n");
 	fprintf(stderr, "  --             end of parameters, next option is file name\n");
 	fprintf(stderr, "If FILE is not specified, read standard input.\n");
-	exit(-1);
+	exit(0);
 }
 
 static void version()
@@ -200,7 +219,7 @@ static void version()
 
 static void opt_check(unsigned int n, const char *opt)
 {
-	static int defined_options[4] = {0, 0, 0, 0};
+	static int defined_options[5] = {0, 0, 0, 0, 0};
 
 	assert(n < sizeof(defined_options) / sizeof(*defined_options));
 
@@ -267,10 +286,14 @@ if (++a >= argc) { \
 			opt_check(2, argv[a]);
 			OPT_WITH_VALUE_CHECK
 			file_out = argv[a];
-		} else if (!strcmp(argv[a], "--depth") || !strcmp(argv_a_short, "-d")) {
+		} else if (!strcmp(argv[a], "--password") || !strcmp(argv_a_short, "-p")) {
 			opt_check(3, argv[a]);
 			OPT_WITH_VALUE_CHECK
-			max_depth = atoi(argv[a]);
+			opt_password = argv[a];
+		} else if (!strcmp(argv[a], "--depth") || !strcmp(argv_a_short, "-d")) {
+			opt_check(4, argv[a]);
+			OPT_WITH_VALUE_CHECK
+			opt_max_depth = atoi(argv[a]);
 		} else if (argv[a][0] == '-') {
 			if (strcmp(argv[a], "--")) {
 				fprintf(stderr, "%s: invalid option -- '%s'\n", PACKAGE_NAME, argv[a]);
@@ -311,18 +334,101 @@ if (++a >= argc) { \
 		out_level = L_DEBUG;
 }
 
+char *cb_password_pre()
+{
+	char *password;
+
+	char *readpwd;
+	if (!opt_password) {
+		fprintf(stderr, "Please type in the password:\n");
+		readpwd = NULL;
+		size_t s = 0;
+		if (getline(&readpwd, &s, stdin) < 0) {
+			if (readpwd)
+				free(readpwd);
+			return NULL;
+		}
+		password = readpwd;
+	} else {
+		password = s_alloc_and_copy(NULL, opt_password);
+	}
+
+	int i;
+	for (i = 0; i < 2; ++i) {
+		int n = strlen(password);
+		if (n >= 1 && (password[n - 1] == '\n' || password[n - 1] == '\r'))
+			password[n - 1] = '\0';
+	}
+
+	DBG("Password: '%s'", password)
+
+	return password;
+}
+
+void cb_password_post(char *password)
+{
+	if (password)
+		free(password);
+}
+
+void cb_loop_top(const pem_ctrl_t *ctrl)
+{
+	void print_hexa(int level, const unsigned char *buf, int buf_len) {
+		int i; for (i = 0; i < buf_len; ++i) out(level, "%02X", (unsigned char)buf[i]);
+	}
+
+	if (!pem_has_data(ctrl)) {
+		outln(L_VERBOSE, "[%s] (skipped: %s)", pem_header(ctrl), pem_errorstring(pem_status(ctrl)));
+		return;
+	}
+
+	if (pem_has_encrypted_data(ctrl)) {
+		out(L_VERBOSE, "[%s] (encrypted with %s", pem_header(ctrl), pem_cipher(ctrl));
+		if (!pem_salt(ctrl))
+			outln(L_VERBOSE, ", no salt)");
+		else {
+			out(L_VERBOSE, ", salt: ");
+			print_hexa(L_VERBOSE, pem_salt(ctrl), pem_salt_len(ctrl));
+			outln(L_VERBOSE, "");
+		}
+	} else {
+		outln(L_VERBOSE, "[%s]", pem_header(ctrl));
+	}
+}
+
+void cb_loop_decrypt(int decrypt_ok, const char *errmsg)
+{
+	if (!decrypt_ok)
+		outln_error("%s", errmsg);
+}
+
 int main(int argc, char **argv)
 {
+const size_t STDIN_BUFSIZE = 8;
+
 	parse_options(argc, argv);
 
-	FILE *fin;
+	unsigned char *data_in = NULL;
 	ssize_t size;
 	if (file_in == NULL) {
-		DBG("Reading from stdin\n")
-		fin = stdin;
-		size = -1;
+		outln(L_VERBOSE, "Reading from stdin");
+		size = 0;
+		while (!feof(stdin)) {
+			size_t next_size = size + STDIN_BUFSIZE;
+			data_in = realloc(data_in, next_size);
+			size_t nr = fread(&data_in[size], 1, STDIN_BUFSIZE, stdin);
+			if (nr != STDIN_BUFSIZE) {
+				if (ferror(stdin) || !feof(stdin)) {
+					outln_error("reading input");
+					exit(-6);
+				}
+			}
+			size += nr;
+		}
+		data_in = realloc(data_in, size);
 	} else {
-		DBG("Reading from file %s\n", file_in)
+		outln(L_VERBOSE, "Reading from file %s", file_in);
+		FILE *fin;
 		if ((size = file_get_size(file_in)) < 0) {
 			outln_errno(errno);
 			exit(-2);
@@ -331,8 +437,32 @@ int main(int argc, char **argv)
 			outln_errno(errno);
 			exit(-3);
 		}
+		data_in = malloc(size + 1);
+		if ((ssize_t)fread(data_in, 1, size, fin) != size) {
+			outln_errno(errno);
+			exit(-4);
+		}
+		fclose(fin);
 	}
-	pkctrl_t *ctrl = pkctrl_construct(fin, size);
+	outln(L_VERBOSE, "Parsing input of %li byte(s)", size);
+
+		/* *VERY IMPORTANT* */
+		/* WARNING
+		 * This character is used to mark end of buffer in the case the input
+		 * is PEM format. */
+	data_in[size] = '\0';
+
+/*    unsigned char *data_out = NULL;*/
+/*    size_t data_out_len = -1;*/
+
+/*    pem_ctrl_t *ctrl = pem_construct_pem_ctrl(data_in);*/
+/*    pem_regcb_password(ctrl, cb_password_pre, cb_password_post);*/
+/*    pem_regcb_loop_top(ctrl, cb_loop_top);*/
+/*    pem_regcb_loop_decrypt(ctrl, cb_loop_decrypt);*/
+/*    pem_walker(ctrl, &data_out, &data_out_len);*/
+/*    pem_destruct_pem_ctrl(ctrl);*/
+
+	pkctrl_t *ctrl = pkctrl_construct(data_in, size);
 
 	FILE *fout;
 	if (file_out == NULL) {
@@ -342,9 +472,10 @@ int main(int argc, char **argv)
 		DBG("Output to file %s\n", file_out)
 		if ((fout = fopen(file_out, "wb")) == NULL) {
 			outln_errno(errno);
-			exit(-4);
+			exit(-5);
 		}
 	}
+
 	fprintf(fout, "%06X  ", 0);
 	fprintf(fout, "%17s", "");
 	if (file_in != NULL)
@@ -355,7 +486,7 @@ int main(int argc, char **argv)
 	seq_t *seq;
 	for (seq = seq_next(ctrl); seq != NULL && seq->type != E_ERROR; seq = seq_next(ctrl)) {
 
-		if (max_depth >= 0 && seq->level > max_depth) continue;
+		if (opt_max_depth >= 0 && seq->level > opt_max_depth) continue;
 
 		fprintf(fout, "%06X  ", (unsigned int)seq->offset);
 
@@ -420,7 +551,5 @@ int main(int argc, char **argv)
 	pkctrl_destruct(ctrl);
 	if (file_out != NULL)
 		fclose(fout);
-	if (file_in != NULL)
-		fclose(fin);
 }
 

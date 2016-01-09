@@ -22,8 +22,14 @@
 #include <errno.h>
 #include <string.h>
 
+typedef struct {
+	const unsigned char *data;
+	size_t data_len;
+	size_t idx;
+} vf_t;
+
 struct pkctrl_t {
-	FILE *f;
+	vf_t vf;
 	size_t offset;
 	seq_t *head;
 	seq_t *tail;
@@ -161,12 +167,14 @@ void seq_clear_error(seq_t *seq)
 	free(seq->errmsg);
 }
 
-pkctrl_t *pkctrl_construct(FILE *f, ssize_t file_size)
+pkctrl_t *pkctrl_construct(const unsigned char *data_in, size_t data_in_len)
 {
 	pkctrl_t *ctrl = (pkctrl_t *)malloc(sizeof(pkctrl_t));
-	ctrl->f = f;
+	ctrl->vf.data = data_in;
+	ctrl->vf.data_len = data_in_len;
+	ctrl->vf.idx = 0;
 	ctrl->tail = seq_construct_and_attach_to_chain(NULL);
-	seq_set_len(ctrl->tail, 0, file_size);
+	seq_set_len(ctrl->tail, 0, data_in_len);
 	ctrl->head = ctrl->tail;
 	ctrl->offset = 0;
 	return ctrl;
@@ -193,6 +201,39 @@ seq_t *pkctrl_head(const pkctrl_t *ctrl)
 	return ctrl->head;
 }
 
+static int vf_eof(const vf_t *vf)
+{
+	return (vf->idx > vf->data_len);
+}
+
+static int vf_getc(vf_t *vf)
+{
+	if (vf->idx >= vf->data_len) {
+		if (vf->idx == vf->data_len)
+			vf->idx++;
+		return EOF;
+	} else {
+		return vf->data[vf->idx++];
+	}
+}
+
+size_t vf_read(void *ptr, size_t size, size_t nmemb, vf_t *vf)
+{
+	if (vf->idx >= vf->data_len)
+		return 0;
+
+		/* We are certain that 'remaining' is '>= 1' */
+	size_t remaining = vf->data_len - vf->idx;
+
+	size_t nb_bytes = size * nmemb;
+	if (nb_bytes > remaining)
+		nb_bytes = remaining;
+
+	memcpy(ptr, &vf->data[vf->idx], nb_bytes);
+	vf->idx += nb_bytes;
+	return nb_bytes;
+}
+
 seq_t *seq_next(pkctrl_t *ctrl)
 {
 	const char *prefix = "offset %lu: ";
@@ -200,8 +241,8 @@ seq_t *seq_next(pkctrl_t *ctrl)
 
 	size_t cons = 0;
 
-	while ((ctrl->tail->data_len >= 0 && ctrl->tail->consumed >= ctrl->tail->total_len) || feof(ctrl->f)) {
-		if (feof(ctrl->f)) {
+	while ((ctrl->tail->data_len >= 0 && ctrl->tail->consumed >= ctrl->tail->total_len) || vf_eof(&ctrl->vf)) {
+		if (vf_eof(&ctrl->vf)) {
 			if (ctrl->tail->parent == NULL) {
 				seq_destruct(ctrl->tail);
 				ctrl->tail = NULL;
@@ -232,7 +273,7 @@ seq_t *seq_next(pkctrl_t *ctrl)
 	ctrl->tail->offset = ctrl->offset;
 
 	int c;
-	if ((c = fgetc(ctrl->f)) == EOF) {
+	if ((c = vf_getc(&ctrl->vf)) == EOF) {
 		if (ctrl->tail->data_len < 0 && (ctrl->tail->parent == NULL || ctrl->tail->parent->parent == NULL)) {
 				/* Input was stdin thus size was unknown => not an error */
 			seq_destruct(ctrl->tail);
@@ -264,7 +305,7 @@ seq_t *seq_next(pkctrl_t *ctrl)
 		pos = 1;
 
 		do {
-			if ((c = fgetc(ctrl->f)) == EOF) {
+			if ((c = vf_getc(&ctrl->vf)) == EOF) {
 				DBG("end of file encountered (3)\n")
 				goto error;
 			}
@@ -305,7 +346,7 @@ seq_t *seq_next(pkctrl_t *ctrl)
 	}
 
 	int cc;
-	if ((cc = fgetc(ctrl->f)) == EOF) {
+	if ((cc = vf_getc(&ctrl->vf)) == EOF) {
 		DBG("end of file encountered (4)\n")
 		goto error;
 	}
@@ -326,7 +367,7 @@ seq_t *seq_next(pkctrl_t *ctrl)
 		tag.data_len = 0;
 		int i;
 		for (i = 1; i <= n; ++i) {
-			if ((cc = fgetc(ctrl->f)) == EOF) {
+			if ((cc = vf_getc(&ctrl->vf)) == EOF) {
 				DBG("end of file encountered (5)\n")
 				goto error;
 			}
@@ -349,11 +390,11 @@ seq_t *seq_next(pkctrl_t *ctrl)
 		if (tag.data_len >= 1) {
 			ctrl->tail->data = (char *)malloc(tag.data_len);
 			size_t nbread;
-			nbread = fread(ctrl->tail->data, 1, (size_t)tag.data_len, ctrl->f);
+			nbread = vf_read(ctrl->tail->data, 1, (size_t)tag.data_len, &ctrl->vf);
 			cons += nbread;
 
 			if (nbread != tag.data_len) {
-				if (feof(ctrl->f)) {
+				if (vf_eof(&ctrl->vf)) {
 					DBG("end of file encountered (6)\n")
 					goto error;
 				} else {
