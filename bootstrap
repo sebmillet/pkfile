@@ -1,0 +1,7 @@
+#!/bin/sh
+
+autoheader
+aclocal -I admin
+automake --add-missing --copy
+autoconf
+

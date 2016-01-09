@@ -18,7 +18,7 @@
 #ifndef COMMON_H
 #define COMMON_H
 
-#define DEBUG
+//#define DEBUG
 
 #include <sys/types.h>
 

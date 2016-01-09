@@ -15,7 +15,7 @@
  * =====================================================================================
  */
 
-/*#define DEBUG*/
+/*#define PPEM_DEBUG*/
 
 #include "ppem.h"
 
@@ -37,7 +37,7 @@ static int pem_base64_decode(const unsigned char *b64msg, size_t b64msg_len, uns
 
 #define UNUSED(x) (void)(x)
 
-#ifdef DEBUG
+#ifdef PPEM_DEBUG
 #define DBG(...) \
 {\
 	fprintf(stderr, "%s[%d]\t", __FILE__, __LINE__); \
@@ -827,7 +827,7 @@ int pem_walker(pem_ctrl_t *ctrl, unsigned char **data_out, size_t *data_out_len)
 	pem_openssl_terminate();
 
 	int r = (count || pem_content);
-	DBG("pem_walker() returning value %d (0 means no PEM content at all, 1 means PEM stuff found)", r);
+	DBG("pem_walker() returning value %d (0 means no PEM content at all, 1 means PEM stuff found)", r)
 	return r;
 }
 

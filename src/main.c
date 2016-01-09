@@ -15,6 +15,7 @@
  * =====================================================================================
  */
 
+/*#define HAS_LIB_OPENSSL*/
 /*#define VSAFE*/
 
 #define PACKAGE_NAME "pkfile"
@@ -32,7 +33,10 @@
 
 #include "common.h"
 #include "pkfile.h"
+
+#ifdef HAS_LIB_OPENSSL
 #include "ppem.h"
+#endif
 
 static const char *tree_strings[] = {
 	"└── ", /* T_NORTH_EAST */
@@ -64,6 +68,8 @@ int assume_der = FALSE;
 int opt_tree = FALSE;
 
 int opt_force_no_interactive = FALSE;
+
+#define UNUSED(x) (void)(x)
 
 	/*
 	 * Needed by FATAL_ERROR macro
@@ -354,11 +360,17 @@ if (++a >= argc) { \
 		fprintf(stderr, "%s: option '%s' requires one argument\n", PACKAGE_NAME, missing_option_value);
 	}
 	if (opt_inform) {
-		if (!strcmp(opt_inform, "PEM") || !strcmp(opt_inform, "pem"))
+		if (!strcmp(opt_inform, "PEM") || !strcmp(opt_inform, "pem")) {
 			assume_pem = TRUE;
-		else if (!strcmp(opt_inform, "DER") || !strcmp(opt_inform, "der"))
+
+#ifndef HAS_LIB_OPENSSL
+			fprintf(stderr, "%s: this version does not support PEM format\n", PACKAGE_NAME);
+			exit(-9);
+#endif
+
+		} else if (!strcmp(opt_inform, "DER") || !strcmp(opt_inform, "der")) {
 			assume_der = TRUE;
-		else {
+		} else {
 			fprintf(stderr, "%s: unknown input format, allowed values are pem and der\n", PACKAGE_NAME);
 		}
 	}
@@ -366,9 +378,15 @@ if (++a >= argc) { \
 	if (a < 0)
 		usage();
 
+#ifndef HAS_LIB_OPENSSL
+	assume_der = TRUE;
+#endif
+
 	if (optset_debug)
 		out_level = L_DEBUG;
 }
+
+#ifdef HAS_LIB_OPENSSL
 
 char *cb_password_pre()
 {
@@ -438,6 +456,8 @@ void cb_loop_decrypt(int decrypt_ok, const char *errmsg)
 		outln_error("%s", errmsg);
 }
 
+#endif /* #ifdef HAS_LIB_OPENSSL */
+
 void print_tree(const seq_t *seq, const seq_t *seq_head, FILE *fout)
 {
 	if (!seq) {
@@ -506,7 +526,7 @@ void print_tree(const seq_t *seq, const seq_t *seq_head, FILE *fout)
 			} else {
 				fprintf(fout, "%02X", c);
 			}
-			if (!((i + 1) % period1))
+			if (!((i + 1) % period1) && i + 1 < seq->data_len)
 				fprintf(fout, "\n");
 			else if (period2 && !((i + 1) % period2))
 				fprintf(fout, "  ");
@@ -540,13 +560,15 @@ const size_t STDIN_BUFSIZE = 8;
 	parse_options(argc, argv);
 
 	int is_interactive = isatty(fileno(stdout));
-	DBG("is_interactive = %i\n", is_interactive);
+	DBG("is_interactive = %i\n", is_interactive)
 
 #ifdef VSAFE
 	if (!file_out && is_interactive && !opt_force_no_interactive && !opt_tree) {
 		outln_error("der-encoded data not output to a terminal, use '-o FILENAME' or '-i' options to avoid this error");
 		exit(-7);
 	}
+#else
+	UNUSED(is_interactive);
 #endif
 
 	unsigned char *data_in = NULL;
@@ -596,6 +618,8 @@ const size_t STDIN_BUFSIZE = 8;
 	int data_in_is_pem = FALSE;
 	unsigned char *data_out = NULL;
 	size_t data_out_len = 0;
+
+#ifdef HAS_LIB_OPENSSL
 	if (!assume_der) {
 		outln(L_VERBOSE, "Trying to parse input data against PEM rules");
 		pem_ctrl_t *pem = pem_construct_pem_ctrl(data_in);
@@ -605,6 +629,7 @@ const size_t STDIN_BUFSIZE = 8;
 		data_in_is_pem = pem_walker(pem, &data_out, &data_out_len);
 		pem_destruct_pem_ctrl(pem);
 	}
+#endif
 
 	const unsigned char *pkdata;
 	size_t pkdata_len;

@@ -70,6 +70,7 @@ size_t pem_bin_len(const pem_ctrl_t *ctrl);
 int pem_alloc_and_read_hexa(const char *s, int minimum_length, unsigned char **buf, size_t *buf_len);
 void pem_openssl_start();
 void pem_openssl_terminate();
+
 int pem_decrypt(const pem_ctrl_t *ctrl, unsigned char **out, int *out_len, const char **errmsg);
 
 #endif /* PPEM_H */

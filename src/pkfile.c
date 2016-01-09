@@ -34,12 +34,15 @@ struct pkctrl_t {
 	seq_t *tail;
 };
 
+#ifdef DEBUG
 static const char *short_classes[] = {
 	"univ", /* CLASS_UNIVERSAL */
 	"appl", /* CLASS_APPLICATION */
 	"cont", /* CLASS_CONTEXT_SPECIFIC */
 	"priv"  /* CLASS_PRIVATE */
 };
+#endif
+
 #define TAG_CLASS_UNIVERSAL        0
 #define TAG_CLASS_APPLICATION      1
 #define TAG_CLASS_CONTEXT_SPECIFIC 2
@@ -74,7 +77,7 @@ static tag_univ_t univ_tags[] = {
 /*   name                 type_t          is_string */
 	{"EOC",               T_PRIM,         FALSE},
 	{"BOOLEAN",           T_PRIM,         FALSE},
-	{"INTEGER",           T_PRIM,         FALSE},
+	{"INTEGER",           T_PRIM,         FALSE}, /* TAG_U_INTEGER */
 	{"BIT STRING",        T_PRIM_OR_CONS, FALSE},
 	{"OCTET STRING",      T_PRIM_OR_CONS, FALSE},
 	{"NULL",              T_PRIM,         FALSE},
@@ -103,9 +106,10 @@ static tag_univ_t univ_tags[] = {
 	{"UniversalString",   T_PRIM_OR_CONS, TRUE},
 	{"CHARACTER STRING",  T_PRIM_OR_CONS, TRUE},
 	{"BMPString",         T_PRIM_OR_CONS, TRUE},
-	{"(long form)",       T_NA,           FALSE}       /* TAG_U_LONG_FORMAT */
+	{"(long form)",       T_NA,           FALSE} /* TAG_U_LONG_FORMAT */
 };
 
+#define TAG_U_INTEGER           2
 #define TAG_U_OBJECT_IDENTIFIER 6
 #define TAG_U_LONG_FORMAT       31
 
@@ -395,7 +399,15 @@ seq_t *seq_next(pkctrl_t *ctrl)
 	ctrl->tail->tag_class = tag.class;
 	ctrl->tail->tag_type = tag.type;
 	ctrl->tail->tag_number = tag.number;
+
+	/*
+	 * I "repeat" the 'ifdef DEBUG' as short_classes definition occurs
+	 * only in debug mode. At the moment DBG does something only when DEBUG
+	 * is defined but who knows...
+	 * */
+#ifdef DEBUG
 	DBG("%s-%s: %s, len: %lu\n", short_classes[tag.class], short_types[tag.type], ctrl->tail->tag_name, tag.data_len)
+#endif
 
 	tag.header_len = cons;
 	seq_set_len(ctrl->tail, tag.header_len, tag.data_len);

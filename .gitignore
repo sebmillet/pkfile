@@ -1,0 +1,9 @@
+pkfile
+pkfile-0.1.tar.gz
+Makefile
+config.h
+config.log
+config.status
+stamp-h1
+src/.deps/
+build/
