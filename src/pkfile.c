@@ -19,7 +19,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-/*#include <errno.h>*/
 #include <string.h>
 
 typedef struct {
@@ -57,12 +56,6 @@ typedef enum {
 	T_NA = -1           /* (same as above: value used here-only) */
 } type_t;
 
-typedef struct tag_univ_t {
-	const char *name;
-	type_t type;
-	int is_string;
-} tag_univ_t;
-
 typedef struct {
 	int class;
 	type_t type;
@@ -70,6 +63,12 @@ typedef struct {
 	unsigned long header_len;  /* Size of tag itself */
 	unsigned long data_len;    /* Value coded by the tag */
 } tag_t;
+
+typedef struct tag_univ_t {
+	const char *name;
+	type_t type;
+	int is_string;
+} tag_univ_t;
 
 static tag_univ_t univ_tags[] = {
 /*   name                 type_t          is_string */
@@ -96,8 +95,8 @@ static tag_univ_t univ_tags[] = {
 	{"T61STRING",         T_PRIM_OR_CONS, TRUE},
 	{"VIDEOTEXSTRING",    T_PRIM_OR_CONS, TRUE},
 	{"IA5String",         T_PRIM_OR_CONS, TRUE},
-	{"UTCTime",           T_PRIM_OR_CONS, FALSE},
-	{"GeneralizedTime",   T_PRIM_OR_CONS, FALSE},
+	{"UTCTime",           T_PRIM_OR_CONS, TRUE},
+	{"GeneralizedTime",   T_PRIM_OR_CONS, TRUE},
 	{"GraphicString",     T_PRIM_OR_CONS, TRUE},
 	{"VisibleString",     T_PRIM_OR_CONS, TRUE},
 	{"GeneralString",     T_PRIM_OR_CONS, TRUE},
@@ -165,6 +164,20 @@ void seq_clear_error(seq_t *seq)
 	if (seq->errmsg == NULL)
 		FATAL_ERROR("%s", "seq_clear_error(): error condition but no error message!");
 	free(seq->errmsg);
+}
+
+int seq_has_string_data(const seq_t *seq)
+{
+	if (seq->tag_class == TAG_CLASS_UNIVERSAL &&
+			(size_t)seq->tag_number < sizeof(univ_tags) / sizeof(*univ_tags)) {
+		return univ_tags[seq->tag_number].is_string;
+	}
+	return FALSE;
+}
+
+int seq_has_oid(const seq_t *seq)
+{
+	return (seq->tag_class == TAG_CLASS_UNIVERSAL && seq->tag_number == TAG_U_OBJECT_IDENTIFIER);
 }
 
 pkctrl_t *pkctrl_construct(const unsigned char *data_in, size_t data_in_len)
@@ -294,7 +307,6 @@ seq_t *seq_next(pkctrl_t *ctrl)
 	tag_t tag;
 	tag.class = (c & 0xc0) >> 6;
 	tag.type = (c & 0x20) >> 5;
-	type_t original_type = tag.type;
 	tag.number = (c & 0x1F);
 	type_t type = univ_tags[tag.number].type;
 	if (tag.class == TAG_CLASS_UNIVERSAL && (type == T_PRIM || type == T_CONS) && tag.type != type) {
@@ -379,8 +391,11 @@ seq_t *seq_next(pkctrl_t *ctrl)
 	DBG("Length: %lu\n", tag.data_len)
 
 	get_tag_name(ctrl->tail->tag_name, sizeof(ctrl->tail->tag_name), tag.class, tag.number);
-	ctrl->tail->tag_type = short_types[original_type];
-	DBG("%s-%s: %s, len: %lu\n", short_classes[tag.class], short_types[original_type], ctrl->tail->tag_name, tag.data_len)
+	ctrl->tail->tag_type_str = short_types[tag.type];
+	ctrl->tail->tag_class = tag.class;
+	ctrl->tail->tag_type = tag.type;
+	ctrl->tail->tag_number = tag.number;
+	DBG("%s-%s: %s, len: %lu\n", short_classes[tag.class], short_types[tag.type], ctrl->tail->tag_name, tag.data_len)
 
 	tag.header_len = cons;
 	seq_set_len(ctrl->tail, tag.header_len, tag.data_len);

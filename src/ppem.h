@@ -15,6 +15,8 @@
  * =====================================================================================
  */
 
+#ifndef PPEM_H
+
 #include <stdlib.h>
 
 	/*
@@ -69,4 +71,6 @@ int pem_alloc_and_read_hexa(const char *s, int minimum_length, unsigned char **b
 void pem_openssl_start();
 void pem_openssl_terminate();
 int pem_decrypt(const pem_ctrl_t *ctrl, unsigned char **out, int *out_len, const char **errmsg);
+
+#endif /* PPEM_H */
 

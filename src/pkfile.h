@@ -15,6 +15,8 @@
  * =====================================================================================
  */
 
+#ifndef PKFILE_H
+
 #include "common.h"
 
 #include <stdio.h>
@@ -48,8 +50,11 @@ struct seq_t {
 	int level;
 	int index;
 
-	const char *tag_type;
+	const char *tag_type_str;
 	char tag_name[MAX_TAG_NAME];
+	int tag_class;
+	int tag_type;
+	int tag_number;
 
 	char header[TAG_MAX_HLENGTH];
 	char *data;   /* Used with E_DATA */
@@ -73,4 +78,8 @@ seq_t *pkctrl_head(const pkctrl_t *ctrl);
 
 seq_t *seq_next(pkctrl_t *pkf);
 void seq_clear_error(seq_t *seq);
+int seq_has_string_data(const seq_t *seq);
+int seq_has_oid(const seq_t *seq);
+
+#endif /* PKFILE_H */
 

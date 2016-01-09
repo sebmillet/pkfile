@@ -40,8 +40,8 @@ int outln_warning(const char *fmt, ...);
 int outln_errno(int e);
 
 void fatalln(const char *file, int line, const char *fmt, ...);
-#define FATAL_ERROR(s, ...) \
-	fatalln(__FILE__, __LINE__, s, __VA_ARGS__)
+#define FATAL_ERROR(...) \
+	fatalln(__FILE__, __LINE__, __VA_ARGS__)
 int dbg_core(const char *filename, int line, const char *fmt, ...);
 #ifdef DEBUG
 #define DBG(...) \

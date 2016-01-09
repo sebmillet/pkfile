@@ -15,10 +15,13 @@
  * =====================================================================================
  */
 
+/*#define VSAFE*/
+
 #define PACKAGE_NAME "pkfile"
 #define PACKAGE_STRING "pkfile 0.1"
 
 #include <stdio.h>
+#include <unistd.h>
 #include <assert.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -53,8 +56,14 @@ char *file_out = NULL;
 int out_level = L_NORMAL;
 
 const char *opt_password = NULL;
-int opt_assume_pem = 0;
-int opt_assume_der = 0;
+
+const char *opt_inform = NULL;
+int assume_pem = FALSE;
+int assume_der = FALSE;
+
+int opt_tree = FALSE;
+
+int opt_force_no_interactive = FALSE;
 
 	/*
 	 * Needed by FATAL_ERROR macro
@@ -197,7 +206,7 @@ static void usage()
 	fprintf(stderr, "Usage: %s [options] [FILE]\n", PACKAGE_NAME);
 	fprintf(stderr, "Extract sequences of PKCS files.\n");
 	fprintf(stderr, "This program will automatically detect whether PEM format\n");
-	fprintf(stderr, "is being used, or DER, unless started with --pem or --der.\n");
+	fprintf(stderr, "is being used, or DER, unless started with --inform.\n");
 	fprintf(stderr, "  -h  --help          print this usage and exit\n");
 	fprintf(stderr, "  -V  --verbose       verbose output\n");
 	fprintf(stderr, "  -D  --debug         debug output\n");
@@ -205,8 +214,8 @@ static void usage()
 	fprintf(stderr, "  -d  --depth n       set max depth to n (default: -1)\n");
 	fprintf(stderr, "                      -1 = no maximum depth\n");
 	fprintf(stderr, "  -p  --password pwd  Set password\n");
-	fprintf(stderr, "      --pem           Assume PEM format\n");
-	fprintf(stderr, "      --der           Assume DER format\n");
+	fprintf(stderr, "  -i  --inform format Set format. Either pem or der\n");
+	fprintf(stderr, "  -t  --tree          Outputs in hierarchical format\n");
 	fprintf(stderr, "  -o  --out           output to file\n");
 	fprintf(stderr, "  --                  end of parameters, next option is file name\n");
 	fprintf(stderr, "If FILE is not specified, read standard input.\n");
@@ -226,7 +235,7 @@ static void version()
 
 static void opt_check(unsigned int n, const char *opt)
 {
-	static int defined_options[7] = {0, 0, 0, 0, 0, 0, 0};
+	static int defined_options[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
 	assert(n < sizeof(defined_options) / sizeof(*defined_options));
 
@@ -297,16 +306,20 @@ if (++a >= argc) { \
 			opt_check(3, argv[a]);
 			OPT_WITH_VALUE_CHECK
 			opt_password = argv[a];
-		} else if (!strcmp(argv[a], "--pem")) {
-			opt_check(5, argv[a]);
-			opt_assume_pem = 1;
-		} else if (!strcmp(argv[a], "--der")) {
-			opt_check(6, argv[a]);
-			opt_assume_der = 1;
-		} else if (!strcmp(argv[a], "--depth") || !strcmp(argv_a_short, "-d")) {
+		} else if (!strcmp(argv[a], "--inform") || !strcmp(argv_a_short, "-i")) {
 			opt_check(4, argv[a]);
 			OPT_WITH_VALUE_CHECK
+			opt_inform = argv[a];
+		} else if (!strcmp(argv[a], "--depth") || !strcmp(argv_a_short, "-d")) {
+			opt_check(5, argv[a]);
+			OPT_WITH_VALUE_CHECK
 			opt_max_depth = atoi(argv[a]);
+		} else if (!strcmp(argv[a], "--tree") || !strcmp(argv_a_short, "-t")) {
+			opt_check(6, argv[a]);
+			opt_tree = TRUE;
+		} else if (!strcmp(argv[a], "--no-interactive") || !strcmp(argv_a_short, "-i")) {
+			opt_check(7, argv[a]);
+			opt_force_no_interactive = TRUE;
 		} else if (argv[a][0] == '-') {
 			if (strcmp(argv[a], "--")) {
 				fprintf(stderr, "%s: invalid option -- '%s'\n", PACKAGE_NAME, argv[a]);
@@ -317,7 +330,7 @@ if (++a >= argc) { \
 				break;
 			}
 		} else {
-			if (file_in == NULL) {
+			if (!file_in) {
 				file_in = argv[a];
 			} else {
 				fprintf(stderr, "%s: invalid argument -- '%s'\n", PACKAGE_NAME, argv[a]);
@@ -332,20 +345,26 @@ if (++a >= argc) { \
 		if (shortopt_nb == 0)
 			++a;
 	}
-	if ((a >= 1 && a < argc - 1) || (a >= 1 && a == argc - 1 && file_in != NULL)) {
+	if ((a >= 1 && a < argc - 1) || (a >= 1 && a == argc - 1 && file_in)) {
 		fprintf(stderr, "%s: trailing options.\n", PACKAGE_NAME);
 		a = -1;
 	} else if (a >= 1 && a == argc - 1) {
 		file_in = argv[a];
-	} else if (missing_option_value != NULL) {
+	} else if (missing_option_value) {
 		fprintf(stderr, "%s: option '%s' requires one argument\n", PACKAGE_NAME, missing_option_value);
 	}
+	if (opt_inform) {
+		if (!strcmp(opt_inform, "PEM") || !strcmp(opt_inform, "pem"))
+			assume_pem = TRUE;
+		else if (!strcmp(opt_inform, "DER") || !strcmp(opt_inform, "der"))
+			assume_der = TRUE;
+		else {
+			fprintf(stderr, "%s: unknown input format, allowed values are pem and der\n", PACKAGE_NAME);
+		}
+	}
+
 	if (a < 0)
 		usage();
-	if (opt_assume_pem && opt_assume_der) {
-		fprintf(stderr, "%s: you can use only one of --pem and --der options at a time\n", PACKAGE_NAME);
-		usage();
-	}
 
 	if (optset_debug)
 		out_level = L_DEBUG;
@@ -419,15 +438,120 @@ void cb_loop_decrypt(int decrypt_ok, const char *errmsg)
 		outln_error("%s", errmsg);
 }
 
+void print_tree(const seq_t *seq, const seq_t *seq_head, FILE *fout)
+{
+	if (!seq) {
+		fprintf(fout, "%26s\n", ".");
+		return;
+	}
+
+	if (opt_max_depth >= 0 && seq->level > opt_max_depth) return;
+
+	fprintf(fout, "%06X  ", (unsigned int)seq->offset);
+
+	int n = 0;
+	const seq_t *s;
+
+	char buf1[100];
+	buf1[0] = '\0';
+	char buf2[10];
+	for (s = seq_head; s && s->child; s = s->child) {
+		assert(n == s->level);
+		++n;
+
+		if (n == 1) {
+			snprintf(buf2, sizeof(buf2), "%d", s->index);
+		} else {
+			snprintf(buf2, sizeof(buf2), ".%d", s->index);
+		}
+		s_strncat(buf1, buf2, sizeof(buf1));
+	}
+	fprintf(fout, "%-15s  ", buf1);
+
+	for (s = seq_head; s; s = s->child) {
+		assert(s->tree >= 0 && s->tree < sizeof(tree_strings) / sizeof(*tree_strings));
+		fputs(tree_strings[s->tree], fout);
+	}
+	fprintf(fout, "%s: %s, len: %li (%li+%li)\n",
+			seq->tag_type_str, seq->tag_name, seq->total_len, seq->header_len, seq->data_len);
+	if (seq->type == E_DATA) {
+		int i, period1, period2;
+		int is_string = seq_has_string_data(seq);
+		if (is_string) {
+			period1 = 38;
+			period2 = 0;
+		} else {
+			period1 = 16;
+			period2 = 4;
+		}
+		for (i = 0; i < seq->data_len; ++i) {
+			if (!(i % period1)) {
+				fprintf(fout, "%25s", " ");
+				for (s = seq_head; s; s = s->child) {
+					tree_t t = s->tree;
+					assert(t >= 0 && t < sizeof(tree_strings) / sizeof(*tree_strings));
+					if (t == T_NORTH_EAST)
+						t = T_BLANK;
+					else if (t == T_NORTH_SOUTH_EAST)
+						t = T_NORTH_SOUTH;
+					fputs(tree_strings[t], fout);
+				}
+				fputs("      ", fout);
+			}
+			unsigned char c = seq->data[i];
+			if (is_string) {
+				if (c < 32 || c == 127)
+					c = '.';
+				fprintf(fout, "%c", (char)c);
+			} else {
+				fprintf(fout, "%02X", c);
+			}
+			if (!((i + 1) % period1))
+				fprintf(fout, "\n");
+			else if (period2 && !((i + 1) % period2))
+				fprintf(fout, "  ");
+		}
+		fputs("\n", fout);
+	}
+}
+
+void print_der(const seq_t *seq, FILE *fout)
+{
+	if (!seq)
+		return;
+
+	int i;
+	for (i = 0; i < seq->header_len + (seq->data ? seq->data_len : 0); ++i) {
+		char c;
+		if (i < seq->header_len)
+			c = seq->header[i];
+		else if (seq->data)
+			c = seq->data[i - seq->header_len];
+		else
+			FATAL_ERROR("Stop");
+		fputc(c, fout);
+	}
+}
+
 int main(int argc, char **argv)
 {
 const size_t STDIN_BUFSIZE = 8;
 
 	parse_options(argc, argv);
 
+	int is_interactive = isatty(fileno(stdout));
+	DBG("is_interactive = %i\n", is_interactive);
+
+#ifdef VSAFE
+	if (!file_out && is_interactive && !opt_force_no_interactive && !opt_tree) {
+		outln_error("der-encoded data not output to a terminal, use '-o FILENAME' or '-i' options to avoid this error");
+		exit(-7);
+	}
+#endif
+
 	unsigned char *data_in = NULL;
 	ssize_t size;
-	if (file_in == NULL) {
+	if (!file_in) {
 		outln(L_VERBOSE, "Reading from stdin");
 		size = 0;
 		while (!feof(stdin)) {
@@ -450,7 +574,7 @@ const size_t STDIN_BUFSIZE = 8;
 			outln_errno(errno);
 			exit(-2);
 		}
-		if ((fin = fopen(file_in, "rb")) == NULL) {
+		if (!(fin = fopen(file_in, "rb"))) {
 			outln_errno(errno);
 			exit(-3);
 		}
@@ -469,11 +593,11 @@ const size_t STDIN_BUFSIZE = 8;
 		 * is PEM format. */
 	data_in[size] = '\0';
 
-	outln(L_VERBOSE, "Trying to parse input data against PEM rules");
-	int data_in_is_pem = 0;
+	int data_in_is_pem = FALSE;
 	unsigned char *data_out = NULL;
 	size_t data_out_len = 0;
-	if (!opt_assume_der) {
+	if (!assume_der) {
+		outln(L_VERBOSE, "Trying to parse input data against PEM rules");
 		pem_ctrl_t *pem = pem_construct_pem_ctrl(data_in);
 		pem_regcb_password(pem, cb_password_pre, cb_password_post);
 		pem_regcb_loop_top(pem, cb_loop_top);
@@ -484,7 +608,7 @@ const size_t STDIN_BUFSIZE = 8;
 
 	const unsigned char *pkdata;
 	size_t pkdata_len;
-	if (opt_assume_der || (!data_in_is_pem && !opt_assume_pem)) {
+	if (assume_der || (!data_in_is_pem && !assume_pem)) {
 		outln(L_VERBOSE, "Will use original data as pk input (assuming der-encoded content)");
 		pkdata = data_in;
 		pkdata_len = size;
@@ -492,103 +616,45 @@ const size_t STDIN_BUFSIZE = 8;
 		outln(L_VERBOSE, "Will use pem decoded/decrypted data as pk input");
 		pkdata = data_out;
 		pkdata_len = data_out_len;
-	}
-	if (!pkdata || !pkdata_len) {
-		outln_error("No data to analyze, aborting");
-		exit(-7);
+		if (!pkdata || data_out_len == 0) {
+			outln_error("No PEM data available");
+			exit(-8);
+		}
 	}
 
 	pkctrl_t *ctrl = pkctrl_construct(pkdata, pkdata_len);
 
 	FILE *fout;
-	if (file_out == NULL) {
+	if (!file_out) {
 		DBG("Output to stdout\n")
 		fout = stdout;
 	} else {
 		DBG("Output to file %s\n", file_out)
-		if ((fout = fopen(file_out, "wb")) == NULL) {
+		if (!(fout = fopen(file_out, "wb"))) {
 			outln_errno(errno);
 			exit(-5);
 		}
 	}
 
-	fprintf(fout, "%06X  ", 0);
-	fprintf(fout, "%17s", "");
-	if (file_in != NULL)
-		fprintf(fout, "%s\n", file_in);
-	else
-		fprintf(fout, "(stdin)\n");
+	if (opt_tree)
+		print_tree(NULL, NULL, fout);
 
 	seq_t *seq;
-	for (seq = seq_next(ctrl); seq != NULL && seq->type != E_ERROR; seq = seq_next(ctrl)) {
-
-		if (opt_max_depth >= 0 && seq->level > opt_max_depth) continue;
-
-		fprintf(fout, "%06X  ", (unsigned int)seq->offset);
-
-		int n = 0;
-		seq_t *s;
-
-		char buf1[100];
-		buf1[0] = '\0';
-		char buf2[10];
-		for (s = pkctrl_head(ctrl); s != NULL && s->child != NULL; s = s->child) {
-			assert(n == s->level);
-			++n;
-
-			if (n == 1) {
-				snprintf(buf2, sizeof(buf2), "%d", s->index);
-			} else {
-				snprintf(buf2, sizeof(buf2), ".%d", s->index);
-			}
-			s_strncat(buf1, buf2, sizeof(buf1));
-		}
-		fprintf(fout, "%-15s  ", buf1);
-
-		for (s = pkctrl_head(ctrl); s != NULL; s = s->child) {
-			assert(s->tree >= 0 && s->tree < sizeof(tree_strings) / sizeof(*tree_strings));
-			fputs(tree_strings[s->tree], fout);
-		}
-		fprintf(fout, "%s: %s, len: %li (%li+%li)\n",
-				seq->tag_type, seq->tag_name, seq->total_len, seq->header_len, seq->data_len);
-		if (seq->type == E_DATA) {
-			int i;
-			for (i = 0; i < seq->header_len + seq->data_len; ++i) {
-				if (!(i % 16)) {
-					fprintf(fout, "%25s", " ");
-					for (s = pkctrl_head(ctrl); s != NULL; s = s->child) {
-						tree_t t = s->tree;
-						assert(t >= 0 && t < sizeof(tree_strings) / sizeof(*tree_strings));
-						if (t == T_NORTH_EAST)
-							t = T_BLANK;
-						else if (t == T_NORTH_SOUTH_EAST)
-							t = T_NORTH_SOUTH;
-						fputs(tree_strings[t], fout);
-					}
-					fputs("      ", fout);
-				}
-				unsigned char c;
-				if (i < seq->header_len)
-					c = seq->header[i];
-				else
-					c = seq->data[i - seq->header_len];
-				fprintf(fout, "%02X", c);
-				if (!((i + 1) % 16))
-					fprintf(fout, "\n");
-				else if (!((i + 1) % 4))
-					fprintf(fout, "  ");
-			}
-			fputs("\n", fout);
+	for (seq = seq_next(ctrl); seq && seq->type != E_ERROR; seq = seq_next(ctrl)) {
+		if (opt_tree) {
+			print_tree(seq, pkctrl_head(ctrl), fout);
+		} else {
+			print_der(seq, fout);
 		}
 	}
-	if (seq != NULL && seq->type == E_ERROR) {
+	if (seq && seq->type == E_ERROR) {
 		outln_error(seq->errmsg);
 		seq_clear_error(seq);
 	}
 
 	pkctrl_destruct(ctrl);
 
-	if (file_out != NULL)
+	if (file_out)
 		fclose(fout);
 
 	if (data_out)
