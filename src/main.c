@@ -53,6 +53,8 @@ char *file_out = NULL;
 int out_level = L_NORMAL;
 
 const char *opt_password = NULL;
+int opt_assume_pem = 0;
+int opt_assume_der = 0;
 
 	/*
 	 * Needed by FATAL_ERROR macro
@@ -194,14 +196,19 @@ static void usage()
 {
 	fprintf(stderr, "Usage: %s [options] [FILE]\n", PACKAGE_NAME);
 	fprintf(stderr, "Extract sequences of PKCS files.\n");
-	fprintf(stderr, "  -h  --help     print this usage and exit\n");
-	fprintf(stderr, "  -V  --verbose  verbose output\n");
-	fprintf(stderr, "  -D  --debug    debug output\n");
-	fprintf(stderr, "  -v  --version  print version information and exit\n");
-	fprintf(stderr, "  -d  --depth n  set max depth to n (default: -1)\n");
-	fprintf(stderr, "                 -1 = no maximum depth\n");
-	fprintf(stderr, "  -o  --out      output to file\n");
-	fprintf(stderr, "  --             end of parameters, next option is file name\n");
+	fprintf(stderr, "This program will automatically detect whether PEM format\n");
+	fprintf(stderr, "is being used, or DER, unless started with --pem or --der.\n");
+	fprintf(stderr, "  -h  --help          print this usage and exit\n");
+	fprintf(stderr, "  -V  --verbose       verbose output\n");
+	fprintf(stderr, "  -D  --debug         debug output\n");
+	fprintf(stderr, "  -v  --version       print version information and exit\n");
+	fprintf(stderr, "  -d  --depth n       set max depth to n (default: -1)\n");
+	fprintf(stderr, "                      -1 = no maximum depth\n");
+	fprintf(stderr, "  -p  --password pwd  Set password\n");
+	fprintf(stderr, "      --pem           Assume PEM format\n");
+	fprintf(stderr, "      --der           Assume DER format\n");
+	fprintf(stderr, "  -o  --out           output to file\n");
+	fprintf(stderr, "  --                  end of parameters, next option is file name\n");
 	fprintf(stderr, "If FILE is not specified, read standard input.\n");
 	exit(0);
 }
@@ -219,7 +226,7 @@ static void version()
 
 static void opt_check(unsigned int n, const char *opt)
 {
-	static int defined_options[5] = {0, 0, 0, 0, 0};
+	static int defined_options[7] = {0, 0, 0, 0, 0, 0, 0};
 
 	assert(n < sizeof(defined_options) / sizeof(*defined_options));
 
@@ -290,6 +297,12 @@ if (++a >= argc) { \
 			opt_check(3, argv[a]);
 			OPT_WITH_VALUE_CHECK
 			opt_password = argv[a];
+		} else if (!strcmp(argv[a], "--pem")) {
+			opt_check(5, argv[a]);
+			opt_assume_pem = 1;
+		} else if (!strcmp(argv[a], "--der")) {
+			opt_check(6, argv[a]);
+			opt_assume_der = 1;
 		} else if (!strcmp(argv[a], "--depth") || !strcmp(argv_a_short, "-d")) {
 			opt_check(4, argv[a]);
 			OPT_WITH_VALUE_CHECK
@@ -329,6 +342,10 @@ if (++a >= argc) { \
 	}
 	if (a < 0)
 		usage();
+	if (opt_assume_pem && opt_assume_der) {
+		fprintf(stderr, "%s: you can use only one of --pem and --der options at a time\n", PACKAGE_NAME);
+		usage();
+	}
 
 	if (optset_debug)
 		out_level = L_DEBUG;
@@ -378,21 +395,21 @@ void cb_loop_top(const pem_ctrl_t *ctrl)
 	}
 
 	if (!pem_has_data(ctrl)) {
-		outln(L_VERBOSE, "[%s] (skipped: %s)", pem_header(ctrl), pem_errorstring(pem_status(ctrl)));
+		outln(L_VERBOSE, "PEM block: [%s] (skipped: %s)", pem_header(ctrl), pem_errorstring(pem_status(ctrl)));
 		return;
 	}
 
 	if (pem_has_encrypted_data(ctrl)) {
-		out(L_VERBOSE, "[%s] (encrypted with %s", pem_header(ctrl), pem_cipher(ctrl));
+		out(L_VERBOSE, "PEM block: [%s] (encrypted with %s", pem_header(ctrl), pem_cipher(ctrl));
 		if (!pem_salt(ctrl))
 			outln(L_VERBOSE, ", no salt)");
 		else {
 			out(L_VERBOSE, ", salt: ");
 			print_hexa(L_VERBOSE, pem_salt(ctrl), pem_salt_len(ctrl));
-			outln(L_VERBOSE, "");
+			outln(L_VERBOSE, ")");
 		}
 	} else {
-		outln(L_VERBOSE, "[%s]", pem_header(ctrl));
+		outln(L_VERBOSE, "PEM block: [%s]", pem_header(ctrl));
 	}
 }
 
@@ -452,17 +469,36 @@ const size_t STDIN_BUFSIZE = 8;
 		 * is PEM format. */
 	data_in[size] = '\0';
 
-/*    unsigned char *data_out = NULL;*/
-/*    size_t data_out_len = -1;*/
+	outln(L_VERBOSE, "Trying to parse input data against PEM rules");
+	int data_in_is_pem = 0;
+	unsigned char *data_out = NULL;
+	size_t data_out_len = 0;
+	if (!opt_assume_der) {
+		pem_ctrl_t *pem = pem_construct_pem_ctrl(data_in);
+		pem_regcb_password(pem, cb_password_pre, cb_password_post);
+		pem_regcb_loop_top(pem, cb_loop_top);
+		pem_regcb_loop_decrypt(pem, cb_loop_decrypt);
+		data_in_is_pem = pem_walker(pem, &data_out, &data_out_len);
+		pem_destruct_pem_ctrl(pem);
+	}
 
-/*    pem_ctrl_t *ctrl = pem_construct_pem_ctrl(data_in);*/
-/*    pem_regcb_password(ctrl, cb_password_pre, cb_password_post);*/
-/*    pem_regcb_loop_top(ctrl, cb_loop_top);*/
-/*    pem_regcb_loop_decrypt(ctrl, cb_loop_decrypt);*/
-/*    pem_walker(ctrl, &data_out, &data_out_len);*/
-/*    pem_destruct_pem_ctrl(ctrl);*/
+	const unsigned char *pkdata;
+	size_t pkdata_len;
+	if (opt_assume_der || (!data_in_is_pem && !opt_assume_pem)) {
+		outln(L_VERBOSE, "Will use original data as pk input (assuming der-encoded content)");
+		pkdata = data_in;
+		pkdata_len = size;
+	} else {
+		outln(L_VERBOSE, "Will use pem decoded/decrypted data as pk input");
+		pkdata = data_out;
+		pkdata_len = data_out_len;
+	}
+	if (!pkdata || !pkdata_len) {
+		outln_error("No data to analyze, aborting");
+		exit(-7);
+	}
 
-	pkctrl_t *ctrl = pkctrl_construct(data_in, size);
+	pkctrl_t *ctrl = pkctrl_construct(pkdata, pkdata_len);
 
 	FILE *fout;
 	if (file_out == NULL) {
@@ -513,7 +549,8 @@ const size_t STDIN_BUFSIZE = 8;
 			assert(s->tree >= 0 && s->tree < sizeof(tree_strings) / sizeof(*tree_strings));
 			fputs(tree_strings[s->tree], fout);
 		}
-		fprintf(fout, "%s: %s, len: %li (%li+%li)\n", seq->tag_type, seq->tag_name, seq->total_len, seq->header_len, seq->data_len);
+		fprintf(fout, "%s: %s, len: %li (%li+%li)\n",
+				seq->tag_type, seq->tag_name, seq->total_len, seq->header_len, seq->data_len);
 		if (seq->type == E_DATA) {
 			int i;
 			for (i = 0; i < seq->header_len + seq->data_len; ++i) {
@@ -548,8 +585,16 @@ const size_t STDIN_BUFSIZE = 8;
 		outln_error(seq->errmsg);
 		seq_clear_error(seq);
 	}
+
 	pkctrl_destruct(ctrl);
+
 	if (file_out != NULL)
 		fclose(fout);
+
+	if (data_out)
+		free(data_out);
+	if (data_in)
+		free(data_in);
+
 }
 

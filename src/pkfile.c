@@ -19,7 +19,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
+/*#include <errno.h>*/
 #include <string.h>
 
 typedef struct {
@@ -226,11 +226,14 @@ size_t vf_read(void *ptr, size_t size, size_t nmemb, vf_t *vf)
 	size_t remaining = vf->data_len - vf->idx;
 
 	size_t nb_bytes = size * nmemb;
-	if (nb_bytes > remaining)
+	int flag1 = 0;
+	if (nb_bytes > remaining) {
+		flag1 = 1;
 		nb_bytes = remaining;
+	}
 
 	memcpy(ptr, &vf->data[vf->idx], nb_bytes);
-	vf->idx += nb_bytes;
+	vf->idx += nb_bytes + flag1;
 	return nb_bytes;
 }
 
@@ -285,7 +288,8 @@ seq_t *seq_next(pkctrl_t *ctrl)
 		DBG("end of file encountered (2)\n")
 		goto error;
 	}
-	cons++;
+	char *hh = ctrl->tail->header;
+	hh[cons++] = (char)c;
 
 	tag_t tag;
 	tag.class = (c & 0xc0) >> 6;
@@ -298,21 +302,16 @@ seq_t *seq_next(pkctrl_t *ctrl)
 		outln_warning("primitive/constructed bit mismatch, enforcing primitive");
 	}
 
-	char *hh = ctrl->tail->header;
-	hh[0] = (char)c;
-	int pos = 0;
 	if (tag.number == TAG_U_LONG_FORMAT) {
-		pos = 1;
-
+		int cc;
 		do {
-			if ((c = vf_getc(&ctrl->vf)) == EOF) {
+			if ((cc = vf_getc(&ctrl->vf)) == EOF) {
 				DBG("end of file encountered (3)\n")
 				goto error;
 			}
-			++cons;
-			hh[pos] = (char)c;
-		} while (hh[pos] & 0x80 && ++pos < TAG_U_LONG_FORMAT_MAX_BYTES);
-		if (pos == TAG_MAX_HLENGTH) {
+			hh[cons++] = (char)cc;
+		} while (cc & 0x80 && cons < TAG_U_LONG_FORMAT_MAX_BYTES);
+		if (cons == TAG_U_LONG_FORMAT_MAX_BYTES) {
 			errmsg = "tag number too big";
 			goto error;
 		}
@@ -324,7 +323,7 @@ seq_t *seq_next(pkctrl_t *ctrl)
 		unsigned bm1;
 		unsigned v0;
 		long unsigned value = 0;
-		for (rev = pos; rev >= 1; --rev) {
+		for (rev = cons; rev >= 1; --rev) {
 			if (rev == 1)
 				bm1 = 0;
 			else
@@ -345,18 +344,18 @@ seq_t *seq_next(pkctrl_t *ctrl)
 		outln_warning("universal tag number above maximum allowed value (30)\n");
 	}
 
-	int cc;
-	if ((cc = vf_getc(&ctrl->vf)) == EOF) {
+	int c2;
+	if ((c2 = vf_getc(&ctrl->vf)) == EOF) {
 		DBG("end of file encountered (4)\n")
 		goto error;
 	}
 
-	++cons;
+	hh[cons++] = (char)c2;
 
 	int n = 0;
-	tag.data_len = (unsigned long)cc;
-	if (cc & 0x80) {
-		n = (cc & 0x7F);
+	tag.data_len = (unsigned long)c2;
+	if (c2 & 0x80) {
+		n = (c2 & 0x7F);
 		if (n > LENGTH_MULTIBYTES_MAX_BYTES - 1) {
 			errmsg = "number of bytes to encode length exceeds maximum";
 			goto error;
@@ -366,12 +365,13 @@ seq_t *seq_next(pkctrl_t *ctrl)
 		}
 		tag.data_len = 0;
 		int i;
+		int cc;
 		for (i = 1; i <= n; ++i) {
 			if ((cc = vf_getc(&ctrl->vf)) == EOF) {
 				DBG("end of file encountered (5)\n")
 				goto error;
 			}
-			++cons;
+			hh[cons++] = (char)cc;
 			tag.data_len <<= 8;
 			tag.data_len += (unsigned int)cc;
 		}
@@ -398,8 +398,7 @@ seq_t *seq_next(pkctrl_t *ctrl)
 					DBG("end of file encountered (6)\n")
 					goto error;
 				} else {
-					errmsg = strerror(errno);
-					goto error;
+					FATAL_ERROR("%s", "Internal inconsistency");
 				}
 			}
 		}
