@@ -19,6 +19,11 @@
 
 #include <stdlib.h>
 
+#ifdef _MSC_VER
+typedef signed long int ssize_t;
+//typedef unsigned long int size_t;
+#endif
+
 	/*
 	 * * ******* *
 	 * * WARNING *

@@ -22,14 +22,17 @@
 #define PACKAGE_STRING "pkfile 0.1"
 
 #include <stdio.h>
+
+#ifndef _MSC_VER
 #include <unistd.h>
+#endif
+
 #include <assert.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <errno.h>
-#include <string.h>
 
 #include "common.h"
 #include "pkfile.h"
@@ -38,6 +41,15 @@
 #include "ppem.h"
 #endif
 
+#if defined(_WIN32) || defined(_WIN64)
+static const char *tree_strings[] = {
+	"`-- ", /* T_NORTH_EAST */
+	"    ", /* T_BLANK */
+	"+-- ", /* T_NORTH_SOUTH_EAST */
+	"|   ", /* T_NORTH_SOUTH */
+	"",     /* T_EMPTY */
+};
+#else
 static const char *tree_strings[] = {
 	"└── ", /* T_NORTH_EAST */
 	"    ", /* T_BLANK */
@@ -45,6 +57,7 @@ static const char *tree_strings[] = {
 	"│   ", /* T_NORTH_SOUTH */
 	"",     /* T_EMPTY */
 };
+#endif
 
 	/*
 	 * The der "SEQUENCE" or "SET OF" provide a hierarchical
@@ -372,6 +385,7 @@ if (++a >= argc) { \
 			assume_der = TRUE;
 		} else {
 			fprintf(stderr, "%s: unknown input format, allowed values are pem and der\n", PACKAGE_NAME);
+			a = -1;
 		}
 	}
 
@@ -390,18 +404,19 @@ if (++a >= argc) { \
 
 char *cb_password_pre()
 {
+/* FIXME */
+#define PASSWORD_MAX_BYTES 200
+
 	char *password;
 
-	char *readpwd;
 	if (!opt_password) {
 		fprintf(stderr, "Please type in the password:\n");
-		readpwd = NULL;
-		size_t s = 0;
-		if (getline(&readpwd, &s, stdin) < 0) {
-			if (readpwd)
-				free(readpwd);
+		char *readpwd = malloc(PASSWORD_MAX_BYTES);
+		if (!fgets(readpwd, PASSWORD_MAX_BYTES, stdin)) {
+			free(readpwd);
 			return NULL;
 		}
+		readpwd[PASSWORD_MAX_BYTES - 1] = '\0';
 		password = readpwd;
 	} else {
 		password = s_alloc_and_copy(NULL, opt_password);
@@ -425,12 +440,12 @@ void cb_password_post(char *password)
 		free(password);
 }
 
+void print_hexa(int level, const unsigned char *buf, int buf_len) {
+	int i; for (i = 0; i < buf_len; ++i) out(level, "%02X", (unsigned char)buf[i]);
+}
+
 void cb_loop_top(const pem_ctrl_t *ctrl)
 {
-	void print_hexa(int level, const unsigned char *buf, int buf_len) {
-		int i; for (i = 0; i < buf_len; ++i) out(level, "%02X", (unsigned char)buf[i]);
-	}
-
 	if (!pem_has_data(ctrl)) {
 		outln(L_VERBOSE, "PEM block: [%s] (skipped: %s)", pem_header(ctrl), pem_errorstring(pem_status(ctrl)));
 		return;
@@ -542,7 +557,7 @@ void print_der(const seq_t *seq, FILE *fout)
 
 	int i;
 	for (i = 0; i < seq->header_len + (seq->data ? seq->data_len : 0); ++i) {
-		char c;
+		char c = '\0';
 		if (i < seq->header_len)
 			c = seq->header[i];
 		else if (seq->data)
@@ -555,11 +570,12 @@ void print_der(const seq_t *seq, FILE *fout)
 
 int main(int argc, char **argv)
 {
+/* FIXME */
 const size_t STDIN_BUFSIZE = 8;
 
 	parse_options(argc, argv);
 
-	int is_interactive = isatty(fileno(stdout));
+	int is_interactive = isatty(_fileno(stdout));
 	DBG("is_interactive = %i\n", is_interactive)
 
 #ifdef VSAFE

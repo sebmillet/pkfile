@@ -1,0 +1,88 @@
+# makefile.mingw
+
+# pkfile.exe makefile for Mingw
+# Tested with Mingw 32-bit
+
+# Sébastien Millet, Februay 2015, January 2016
+
+ifeq ($(DEBUG), 1)
+DEBCPP = -g -DDEBUG
+endif
+
+GCC = gcc.exe
+BUILD = build
+
+INCSSL= c:\openssl-mingw\include
+LIBSSL= c:\openssl-mingw\lib
+
+SSLCPP = -DHAS_LIB_OPENSSL -I$(INCSSL)
+SSLLD = -L$(LIBSSL) -lcrypto
+
+ifeq ($(NOSSL), 1)
+SSLCPP =
+SSLLD =
+endif
+
+CPPFLAGS = -Wall $(DEBCPP) $(SSLCPP)
+LDFLAGS = -Wall $(DEBLD) $(SSLLD)
+
+
+ifneq ($(NOSSL), 1)
+OBJS = $(BUILD)\main.o $(BUILD)\pkfile.o $(BUILD)\ppem.o
+all : libsslwarning
+endif
+ifeq ($(NOSSL), 1)
+OBJS = $(BUILD)\main.o $(BUILD)\pkfile.o
+endif
+
+all : $(BUILD)
+all : $(BUILD)\pkfile.exe
+
+libsslwarning :
+	$(info  ******************************************************)
+	$(info                        IMPORTANT                       )
+	$(info  ******************************************************)
+	$(info  * This makefile.vc is configured for the OPENSSL     *)
+	$(info  * library located here:                              *)
+	$(info  *   $(LIBSSL) (the .lib files))
+	$(info  *   $(INCSSL) (the .h files))
+	$(info  * Therefore to compile successfully, the following   *)
+	$(info  * files should exist:                                *)
+	$(info  *   $(INCSSL)\openssl\objects.h)
+	$(info  *   $(LIBSSL)\libcrypto.a)
+	$(info  * Note the compilation is done with static linking   *)
+	$(info  * to openssl.                                        *)
+	$(info  ******************************************************)
+	$(info  *                                                    *)
+	$(info  * If you wish to compile pkfile.exe without support  *)
+	$(info  * of openssl library, execute the following:         *)
+	$(info  *   mingw32-make -f makefile.mingw NOSSL=1           *)
+	$(info  *                                                    *)
+	$(info  ******************************************************)
+	$(info  The openssl library is used to display the name of)
+	$(info  objects after their OID and to manage PEM content,)
+	$(info  to decode and decrypt it.)
+
+$(BUILD) :
+	-if not exist $(BUILD) mkdir $(BUILD)
+
+$(BUILD)\pkfile.exe : $(OBJS)
+	$(GCC) $(OBJS) -o $(BUILD)\pkfile.exe $(LDFLAGS) -lGdi32
+
+$(BUILD)\main.o : src\main.c
+	$(GCC) -c $< -o $@ $(CPPFLAGS)
+
+$(BUILD)\pkfile.o : src\pkfile.c
+	$(GCC) -c $< -o $@ $(CPPFLAGS)
+
+ifneq ($(NOSSL), 1)
+$(BUILD)\ppem.o : src\ppem.c
+	$(GCC) -c $< -o $@ $(CPPFLAGS)
+endif
+
+mrproper : clean
+
+clean :
+	-if exist $(BUILD)\*.o del $(BUILD)\*.o
+	-if exist $(BUILD)\pkfile.exe del $(BUILD)\pkfile.exe
+

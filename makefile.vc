@@ -1,0 +1,91 @@
+# makefile.vc
+
+# pkfile.exe makefile for Microsoft Visual C++
+
+# Sébastien Millet, Februay 2015, January 2016
+
+BUILD = build
+
+INCSSL= c:\openssl-msvc\include
+LIBSSL= c:\openssl-msvc\lib
+
+SSLCPP = /DHAS_LIB_OPENSSL -I$(INCSSL)
+SSLLD = /LIBPATH:$(LIBSSL)
+SSLLDE = libeay32.lib
+!if "$(NOSSL)" == "1"
+SSLCPP = /Ox
+SSLLD =
+SSLLDE =
+!endif
+
+!if "$(DEBUG)" != "1"
+DEBCPP = /Ox
+DEBLD =
+!endif
+!if "$(DEBUG)" == "1"
+DEBCPP = /Od /Zi /D_DEBUG /DDEBUG
+DEBLD = /DEBUG
+!endif
+
+CPPFLAGS = /nologo /W4 /D_CRT_SECURE_NO_WARNINGS $(DEBCPP) $(SSLCPP)
+LDFLAGS = /nologo $(DEBLD) $(SSLLD)
+
+!if "$(NOSSL)" != "1"
+OBJS = $(BUILD)\main.obj $(BUILD)\pkfile.obj $(BUILD)\ppem.obj
+all : libsslwarning
+!endif
+!if "$(NOSSL)" == "1"
+OBJS = $(BUILD)\main.obj $(BUILD)\pkfile.obj
+!endif
+
+all : $(BUILD)
+all : $(BUILD)\pkfile.exe
+
+libsslwarning :
+	@echo "******************************************************"
+	@echo "                      IMPORTANT                       "
+	@echo "******************************************************"
+	@echo " This makefile.vc is configured for the OPENSSL       "
+	@echo " library located here:                                "
+	@echo "   $(LIBSSL) (the .lib files)
+	@echo "   $(INCSSL) (the .h files)
+	@echo " Therefore to compile successfully, the following     "
+	@echo " files should exist:                                  "
+	@echo "   $(INCSSL)\openssl\objects.h
+	@echo "   $(LIBSSL)\libeay32.lib
+	@echo " Note the compilation is done with static linking     "
+	@echo " to openssl.                                          "
+	@echo "******************************************************"
+	@echo "                                                      "
+	@echo " If you wish to compile pkfile.exe without support    "
+	@echo " of openssl library, execute the following:           "
+	@echo "   mingw32-make -f makefile.mingw NOSSL=1             "
+	@echo "                                                      "
+	@echo "******************************************************"
+	@echo The openssl library is used to display the name of
+	@echo objects after their OID and to manage PEM content,
+	@echo to decode and decrypt it.
+
+$(BUILD) :
+	-if not exist $(BUILD) mkdir $(BUILD)
+
+$(BUILD)\pkfile.exe : $(OBJS)
+	link $(LDFLAGS) $(OBJS) $(SSLLDE) User32.lib Gdi32.lib /OUT:$@
+
+$(BUILD)\main.obj : src\main.c
+	cl $(CPPFLAGS) /Fo$@ /c src\main.c
+$(BUILD)\pkfile.obj : src\pkfile.c
+	cl $(CPPFLAGS) /Fo$@ /c src\pkfile.c
+!if "$(NOSSL)" != "1"
+$(BUILD)\ppem.obj : src\ppem.c
+	cl $(CPPFLAGS) /Fo$@ /c src\ppem.c
+!endif
+
+mrproper : clean
+
+clean :
+	-if exist $(BUILD)\*.obj del $(BUILD)\*.obj
+	-if exist $(BUILD)\*.ilk del $(BUILD)\*.ilk
+	-if exist $(BUILD)\*.pdb del $(BUILD)\*.pdb
+	-if exist $(BUILD)\pkfile.exe del $(BUILD)\pkfile.exe
+

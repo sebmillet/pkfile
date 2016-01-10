@@ -776,12 +776,11 @@ int pem_walker(pem_ctrl_t *ctrl, unsigned char **data_out, size_t *data_out_len)
 
 		unsigned char *data_src;
 		size_t data_src_len;
-		int data_src_is_readonly;
+		int data_src_is_readonly = 1;
 		if (!pem_has_encrypted_data(ctrl)) {
 			DBG("pem_walker(): data is clear")
 			data_src = (unsigned char *)pem_bin(ctrl);
 			data_src_len = pem_bin_len(ctrl);
-			data_src_is_readonly = 1;
 		} else {
 			DBG("pem_walker(): data is encrypted")
 			data_src = NULL;

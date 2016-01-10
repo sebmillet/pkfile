@@ -22,6 +22,11 @@
 
 #include <sys/types.h>
 
+#ifdef _MSC_VER
+typedef long int ssize_t;
+typedef unsigned long int size_t;
+#endif
+
 #define FALSE 0
 #define TRUE  1
 
@@ -47,7 +52,8 @@ int dbg_core(const char *filename, int line, const char *fmt, ...);
 #define DBG(...) \
 	dbg_core(__FILE__, __LINE__, __VA_ARGS__);
 #else
-#define DBG(...)
+#define DBG(...) \
+	dbg_core(__FILE__, __LINE__, __VA_ARGS__);
 #endif
 
 char *s_strncpy(char *dest, const char *src, size_t n);
