@@ -33,13 +33,15 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <ctype.h>
+
+#ifdef HAS_LIB_OPENSSL
+#include <openssl/objects.h>
+#include "ppem.h"
+#endif
 
 #include "common.h"
 #include "pkfile.h"
-
-#ifdef HAS_LIB_OPENSSL
-#include "ppem.h"
-#endif
 
 #if defined(_WIN32) || defined(_WIN64)
 static const char *tree_strings[] = {
@@ -78,9 +80,17 @@ const char *opt_inform = NULL;
 int assume_pem = FALSE;
 int assume_der = FALSE;
 
-int opt_tree = FALSE;
+int opt_bin = FALSE;
+char *opt_node = NULL;
 
-int opt_force_no_interactive = FALSE;
+int opt_print_offset = FALSE;
+int opt_embedded = FALSE;
+
+typedef struct nodes_t nodes_t;
+struct nodes_t {
+	int index;
+	nodes_t *child;
+};
 
 #define UNUSED(x) (void)(x)
 
@@ -234,7 +244,8 @@ static void usage()
 	fprintf(stderr, "                      -1 = no maximum depth\n");
 	fprintf(stderr, "  -p  --password pwd  Set password\n");
 	fprintf(stderr, "  -i  --inform format Set format. Either pem or der\n");
-	fprintf(stderr, "  -t  --tree          Outputs in hierarchical format\n");
+	fprintf(stderr, "  -b  --bin           Outputs binary (der encoded) data\n");
+	fprintf(stderr, "      --offset        Print file offset before node numbers\n");
 	fprintf(stderr, "  -o  --out           output to file\n");
 	fprintf(stderr, "  --                  end of parameters, next option is file name\n");
 	fprintf(stderr, "If FILE is not specified, read standard input.\n");
@@ -254,7 +265,7 @@ static void version()
 
 static void opt_check(unsigned int n, const char *opt)
 {
-	static int defined_options[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+	static int defined_options[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 	assert(n < sizeof(defined_options) / sizeof(*defined_options));
 
@@ -333,12 +344,19 @@ if (++a >= argc) { \
 			opt_check(5, argv[a]);
 			OPT_WITH_VALUE_CHECK
 			opt_max_depth = atoi(argv[a]);
-		} else if (!strcmp(argv[a], "--tree") || !strcmp(argv_a_short, "-t")) {
+		} else if (!strcmp(argv[a], "--bin") || !strcmp(argv_a_short, "-b")) {
 			opt_check(6, argv[a]);
-			opt_tree = TRUE;
-		} else if (!strcmp(argv[a], "--no-interactive") || !strcmp(argv_a_short, "-i")) {
+			opt_bin = TRUE;
+		} else if (!strcmp(argv[a], "--node") || !strcmp(argv_a_short, "-n")) {
 			opt_check(7, argv[a]);
-			opt_force_no_interactive = TRUE;
+			OPT_WITH_VALUE_CHECK
+			opt_node = argv[a];
+		} else if (!strcmp(argv[a], "--offset")) {
+			opt_check(8, argv[a]);
+			opt_print_offset = TRUE;
+		} else if (!strcmp(argv[a], "--embedded") || !strcmp(argv_a_short, "-e")) {
+			opt_check(9, argv[a]);
+			opt_embedded = TRUE;
 		} else if (argv[a][0] == '-') {
 			if (strcmp(argv[a], "--")) {
 				fprintf(stderr, "%s: invalid option -- '%s'\n", PACKAGE_NAME, argv[a]);
@@ -473,119 +491,397 @@ void cb_loop_decrypt(int decrypt_ok, const char *errmsg)
 
 #endif /* #ifdef HAS_LIB_OPENSSL */
 
-void print_tree(const seq_t *seq, const seq_t *seq_head, FILE *fout)
+int decode_oid(char *p, const size_t plen, const char *buf, const size_t buflen)
 {
-	if (!seq) {
-		fprintf(fout, "%26s\n", ".");
-		return;
+	char tmp[20];
+	int pos = 0;
+	while ((unsigned)pos < buflen) {
+		int old_pos = pos;
+		for (; (buf[pos] & 0x80) && (unsigned)pos < buflen; ++pos)
+			;
+		if ((unsigned)pos >= buflen) {
+			return 0;
+		}
+		int rev;
+		long unsigned multi = 1;
+		int shift = 0;
+		unsigned rmask;
+		unsigned lmask;
+		unsigned bm1;
+		unsigned v0;
+		long unsigned value = 0;
+		for (rev = pos; rev >= old_pos; --rev) {
+			if (rev == old_pos)
+				bm1 = 0;
+			else
+				bm1 = (unsigned)buf[rev - 1];
+			rmask = (0x7Fu >> shift);
+			lmask = (0xFFu << (7 - shift)) & 0xFFu;
+			v0 = (long unsigned)(((bm1 << (7 - shift)) & lmask) | (((unsigned)buf[rev] >> shift) & rmask));
+
+			value += v0 * multi;
+			multi *= 256;   /* Can be written <<8, but... */
+			++shift;
+		}
+
+		if (!old_pos) {
+			int x = (int)value / 40;
+			if (x > 2)
+				x = 2;
+			int y = (int)value - 40 * x;
+			snprintf(p, plen, "%i.%i", x, y);
+		} else {
+			snprintf(tmp, sizeof(tmp), ".%lu", value);
+			s_strncat(p, tmp, plen);
+		}
+		++pos;
 	}
+	return 1;
+}
 
-	if (opt_max_depth >= 0 && seq->level > opt_max_depth) return;
+void print_oid(const char *header, ssize_t header_len, const char *data, ssize_t data_len, FILE *fout)
+{
+/* FIXME */
+#define STR_OID_MAX_SIZE 200
+	char str_oid[STR_OID_MAX_SIZE];
 
-	fprintf(fout, "%06X  ", (unsigned int)seq->offset);
+#ifdef HAS_LIB_OPENSSL
+	unsigned char *tmp = malloc(header_len + data_len);
+	memcpy(tmp, header, header_len);
+	memcpy(tmp + header_len, data, data_len);
+	ASN1_OBJECT *oid = NULL;
+	const unsigned char *tt = tmp;
+	const char *sn = "";
+	if (d2i_ASN1_OBJECT(&oid, &tt, header_len + data_len) != NULL) {
+		const char *soid;
+		soid = OBJ_nid2sn(OBJ_obj2nid(oid));
+		sn = (const char *)soid;
+		ASN1_OBJECT_free(oid);
+	}
+	free(tmp);
+#endif
 
-	int n = 0;
-	const seq_t *s;
+	if (!decode_oid(str_oid, sizeof(str_oid), data, data_len)) {
+		fprintf(fout, "bad OID");
+	} else {
+#ifdef HAS_LIB_OPENSSL
+		fprintf(fout, "%s (%s)", str_oid, sn);
+#else
+		fprintf(fout, "%s", str_oid);
+#endif
+	}
+}
 
-	char buf1[100];
-	buf1[0] = '\0';
+void node2str(char *buf, size_t buf_len, const seq_t *seq_head, int is_data)
+{
+	buf[0] = '\0';
 	char buf2[10];
-	for (s = seq_head; s && s->child; s = s->child) {
-		assert(n == s->level);
-		++n;
+	const seq_t *s;
+	int n = 0;
+	for (s = seq_head; s && (is_data || s->child); s = s->child) {
+		assert(n++ == s->level);
 
 		if (n == 1) {
 			snprintf(buf2, sizeof(buf2), "%d", s->index);
 		} else {
 			snprintf(buf2, sizeof(buf2), ".%d", s->index);
 		}
-		s_strncat(buf1, buf2, sizeof(buf1));
+		s_strncat(buf, buf2, buf_len);
 	}
-	fprintf(fout, "%-15s  ", buf1);
+}
 
-	for (s = seq_head; s; s = s->child) {
-		assert(s->tree >= 0 && s->tree < sizeof(tree_strings) / sizeof(*tree_strings));
-		fputs(tree_strings[s->tree], fout);
+void print_tree(const seq_t *seq, const seq_t *seq_head, FILE *fout, int terminal, int *callctrl)
+{
+/* FIXME */
+#define NODES_STR_MAX_LEN 100
+
+	if (opt_max_depth >= 0 && seq->level > opt_max_depth) return;
+
+	if (!terminal) {
+		if (!*callctrl) {
+			if (opt_print_offset)
+				fprintf(fout, "%6s  ", "");
+			fprintf(fout, "%17s.\n", "");
+			*callctrl = TRUE;
+		}
+
+		if (opt_print_offset)
+			fprintf(fout, "%06X  ", (unsigned int)seq->offset);
+
+		char buf1[NODES_STR_MAX_LEN];
+		node2str(buf1, sizeof(buf1), seq_head, FALSE);
+		fprintf(fout, "%-15s  ", buf1);
+
+		const seq_t *s;
+		for (s = seq_head; s; s = s->child) {
+			assert(s->tree >= 0 && s->tree < sizeof(tree_strings) / sizeof(*tree_strings));
+			fputs(tree_strings[s->tree], fout);
+		}
+		fprintf(fout, "%s: %s, len: %li",
+			seq->tag_type_str, seq->tag_name, seq->total_len);
+		if (seq->type == E_DATA && seq_has_bit_string(seq))
+			fprintf(fout, " (%li+1+%li)\n", seq->header_len, seq->data_len - 1);
+		else
+			fprintf(fout, " (%li+%li)\n", seq->header_len, seq->data_len);
 	}
-	fprintf(fout, "%s: %s, len: %li (%li+%li)\n",
-			seq->tag_type_str, seq->tag_name, seq->total_len, seq->header_len, seq->data_len);
+
 	if (seq->type == E_DATA) {
-		int i, period1, period2;
+		int i;
+		int period1 = 0;
+		int period2 = 0;
 		int is_string = seq_has_string_data(seq);
+		int is_oid = seq_has_oid(seq);
+		int is_integer = seq_has_integer(seq);
+		int is_bit_string = seq_has_bit_string(seq);
+		int loop_once = FALSE;
+		int shift1 = (is_bit_string ? 1 : 0);
+		if (is_oid)
+			loop_once = TRUE;
 		if (is_string) {
 			period1 = 38;
+			period2 = 0;
+		} else if (is_integer) {
+			period1 = 19;
 			period2 = 0;
 		} else {
 			period1 = 16;
 			period2 = 4;
 		}
-		for (i = 0; i < seq->data_len; ++i) {
-			if (!(i % period1)) {
-				fprintf(fout, "%25s", " ");
-				for (s = seq_head; s; s = s->child) {
-					tree_t t = s->tree;
-					assert(t >= 0 && t < sizeof(tree_strings) / sizeof(*tree_strings));
-					if (t == T_NORTH_EAST)
-						t = T_BLANK;
-					else if (t == T_NORTH_SOUTH_EAST)
-						t = T_NORTH_SOUTH;
-					fputs(tree_strings[t], fout);
+		int has_looped_at_least_once = FALSE;
+		for (i = 0; loop_once || i < seq->data_len - shift1; ++i) {
+			if (!terminal) {
+				if (!has_looped_at_least_once) {
+					char bf1[NODES_STR_MAX_LEN];
+					node2str(bf1, sizeof(bf1), seq_head, TRUE);
+					if (opt_print_offset)
+						fprintf(fout, "%6s  ", "");
+					fprintf(fout, "%-15s  ", bf1);
+				} else if (loop_once || (period1 && !(i % period1))) {
+						if (opt_print_offset)
+							fprintf(fout, "%6s  ", "");
+						fprintf(fout, "%15s  ", "");
 				}
-				fputs("      ", fout);
+				if (loop_once || (period1 && !(i % period1))) {
+					const seq_t *s;
+					for (s = seq_head; s; s = s->child) {
+						tree_t t = s->tree;
+						assert(t >= 0 && t < sizeof(tree_strings) / sizeof(*tree_strings));
+						if (t == T_NORTH_EAST)
+							t = T_BLANK;
+						else if (t == T_NORTH_SOUTH_EAST)
+							t = T_NORTH_SOUTH;
+						fputs(tree_strings[t], fout);
+					}
+					fputs("      ", fout);
+				}
 			}
-			unsigned char c = seq->data[i];
+			has_looped_at_least_once = TRUE;
+
+			unsigned char c = seq->data[i + shift1];
 			if (is_string) {
 				if (c < 32 || c == 127)
 					c = '.';
 				fprintf(fout, "%c", (char)c);
-			} else {
+			} else if (!loop_once) {
 				fprintf(fout, "%02X", c);
-			}
-			if (!((i + 1) % period1) && i + 1 < seq->data_len)
+			} else if (is_oid) {
+				print_oid(seq->header, seq->header_len, seq->data, seq->data_len, fout);
+			} else
+				FATAL_ERROR("%s", "Hey man, tu fais quoi ?");
+
+			if (period1 && !((i + 1) % period1) && i + 1 < seq->data_len)
 				fprintf(fout, "\n");
 			else if (period2 && !((i + 1) % period2))
 				fprintf(fout, "  ");
+
+			if (loop_once)
+				break;
 		}
-		fputs("\n", fout);
+		if (has_looped_at_least_once)
+			fputs("\n", fout);
 	}
 }
 
-void print_der(const seq_t *seq, FILE *fout)
+void write_der(const seq_t *seq, FILE *fout, int terminal)
 {
+	DBG("write_der() enter\n")
 	if (!seq)
 		return;
 
 	int i;
-	for (i = 0; i < seq->header_len + (seq->data ? seq->data_len : 0); ++i) {
+	int shift1 = (terminal && seq_has_bit_string(seq) ? 1 : 0);
+	for (i = (terminal ? seq->header_len : 0); i < seq->header_len + (seq->data ? seq->data_len : 0) - shift1; ++i) {
 		char c = '\0';
 		if (i < seq->header_len)
 			c = seq->header[i];
 		else if (seq->data)
-			c = seq->data[i - seq->header_len];
+			c = seq->data[i - seq->header_len + shift1];
 		else
 			FATAL_ERROR("Stop");
 		fputc(c, fout);
 	}
+	DBG("write_der() leave\n")
+}
+
+void destruct_nodes(nodes_t *nodes)
+{
+	while (nodes) {
+		nodes_t *next = nodes->child;
+		free(nodes);
+		nodes = next;
+	}
+}
+
+nodes_t *parse_opt_node(const char *sarg)
+{
+	nodes_t *nhead = NULL;
+	nodes_t *ntail = NULL;
+
+	char *scopy = s_alloc_and_copy(NULL, sarg);
+
+		/*
+		 * Trim spaces from beginning and end of string.
+		 * I should create a function for that, yes...
+		 *
+		 * */
+	char *s = scopy;
+	while (isblank(*s))
+		++s;
+	char *e = s + strlen(s) - 1;
+	while (e > s && isblank(*e))
+		--e;
+	*(e + 1) = '\0';
+
+	DBG("Nodes string: '%s'\n", s)
+
+	char *p = s;
+	char *pstart = p;
+	int all_good = FALSE;
+	while (TRUE) {
+		if (isdigit(*p))
+			++p;
+		else if (*p == '.' || *p == '\0') {
+			if (*p != '\0') {
+				*p = '\0';
+				++p;
+			}
+
+			int n = atoi(pstart);
+			if (n <= 0)
+				goto parse_opt_node_error;
+
+			pstart = p;
+
+			nodes_t *nnew = malloc(sizeof(nodes_t));
+			nnew->index = n;
+			DBG("Node: %d\n", n)
+			if (!nhead) {
+				assert(!ntail);
+				nnew->child = NULL;
+				nhead = nnew;
+			} else {
+				ntail->child = nnew;
+			}
+			ntail = nnew;
+
+			if (*p == '\0')
+				break;
+
+		} else {
+			goto parse_opt_node_error;
+		}
+	}
+	all_good = TRUE;
+
+parse_opt_node_error:
+	if (!all_good) {
+		destruct_nodes(nhead);
+		nhead = NULL;
+	}
+	free(scopy);
+	return nhead;
+}
+
+int manage_pkdata(const unsigned char *pkdata, size_t pkdata_len, const nodes_t *nodes, int embed, FILE *fout)
+{
+	pkctrl_t *ctrl = pkctrl_construct(pkdata, pkdata_len);
+
+	int matched_at_least_once = FALSE;
+	seq_t *seq;
+	int callctrl = FALSE;
+	int r = 1;
+	for (seq = seq_next(ctrl); seq && seq->type != E_ERROR; seq = seq_next(ctrl)) {
+
+		const nodes_t *nd = nodes;
+		int is_in_nodes_path = TRUE;
+		seq_t *s;
+		for (s = pkctrl_head(ctrl); s && nd; s = s->child) {
+			if (nd->index != s->index)
+				is_in_nodes_path = FALSE;
+			nd = nd->child;
+		}
+		if (!is_in_nodes_path || nd)
+			continue;
+
+		matched_at_least_once = TRUE;
+
+		if (embed) {
+			if (s) {
+				outln_error("Useless use of -e option for a non data block node");
+				r = 0;
+				break;
+			} else if (seq->type != E_DATA || !seq_has_bit_string(seq)) {
+				outln_error("Node is not BIT STRING, cannot embed analyzis");
+				r = 0;
+				break;
+			} else {
+				r = manage_pkdata((const unsigned char *)seq->data + 1, seq->data_len - 1, NULL, FALSE, fout);
+			}
+		} else {
+			if (!opt_bin) {
+				print_tree(seq, pkctrl_head(ctrl), fout, !s, &callctrl);
+			} else {
+				write_der(seq, fout, !s);
+			}
+		}
+	}
+	if (r == 1) {
+		if (seq && seq->type == E_ERROR) {
+			outln_error(seq->errmsg);
+			seq_clear_error(seq);
+			r = 0;
+		} else if (!matched_at_least_once) {
+			outln_error("Non-existent node");
+			r = 0;
+		}
+	}
+
+	pkctrl_destruct(ctrl, r != 1);
+
+	return r;
 }
 
 int main(int argc, char **argv)
 {
-/* FIXME */
-const size_t STDIN_BUFSIZE = 8;
+const size_t STDIN_BUFSIZE = 1024;
 
 	parse_options(argc, argv);
 
-	int is_interactive = isatty(_fileno(stdout));
-	DBG("is_interactive = %i\n", is_interactive)
-
-#ifdef VSAFE
-	if (!file_out && is_interactive && !opt_force_no_interactive && !opt_tree) {
-		outln_error("der-encoded data not output to a terminal, use '-o FILENAME' or '-i' options to avoid this error");
-		exit(-7);
+	nodes_t *nodes = NULL;
+	if (opt_node) {
+		if (!(nodes = parse_opt_node(opt_node))) {
+			outln_error("bad nodes list");
+			exit(-10);
+		}
 	}
-#else
-	UNUSED(is_interactive);
-#endif
+	if (opt_embedded && !nodes) {
+		outln_error("-e option needs -n to select the node it applies to");
+		exit(-11);
+	}
+	if (opt_bin && opt_print_offset) {
+		outln_error("--offset cannot be used with option -b");
+		exit(-12);
+	}
 
 	unsigned char *data_in = NULL;
 	ssize_t size;
@@ -625,11 +921,13 @@ const size_t STDIN_BUFSIZE = 8;
 	}
 	outln(L_VERBOSE, "Parsing input of %li byte(s)", size);
 
-		/* *VERY IMPORTANT* */
-		/* WARNING
-		 * This character is used to mark end of buffer in the case the input
-		 * is PEM format. */
-	data_in[size] = '\0';
+	if (data_in) {
+			/* *VERY IMPORTANT* */
+			/* WARNING
+			 * This character is used to mark end of buffer in the case the input
+			 * is PEM format. */
+		data_in[size] = '\0';
+	}
 
 	int data_in_is_pem = FALSE;
 	unsigned char *data_out = NULL;
@@ -663,8 +961,6 @@ const size_t STDIN_BUFSIZE = 8;
 		}
 	}
 
-	pkctrl_t *ctrl = pkctrl_construct(pkdata, pkdata_len);
-
 	FILE *fout;
 	if (!file_out) {
 		DBG("Output to stdout\n")
@@ -677,23 +973,7 @@ const size_t STDIN_BUFSIZE = 8;
 		}
 	}
 
-	if (opt_tree)
-		print_tree(NULL, NULL, fout);
-
-	seq_t *seq;
-	for (seq = seq_next(ctrl); seq && seq->type != E_ERROR; seq = seq_next(ctrl)) {
-		if (opt_tree) {
-			print_tree(seq, pkctrl_head(ctrl), fout);
-		} else {
-			print_der(seq, fout);
-		}
-	}
-	if (seq && seq->type == E_ERROR) {
-		outln_error(seq->errmsg);
-		seq_clear_error(seq);
-	}
-
-	pkctrl_destruct(ctrl);
+	manage_pkdata(pkdata, pkdata_len, nodes, opt_embedded, fout);
 
 	if (file_out)
 		fclose(fout);
@@ -703,5 +983,6 @@ const size_t STDIN_BUFSIZE = 8;
 	if (data_in)
 		free(data_in);
 
+	destruct_nodes(nodes);
 }
 

@@ -21,6 +21,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+	/* 10 MB */
+#define MAX_DATA_BLOCK_LEN 10485760
+
 typedef struct {
 	const unsigned char *data;
 	size_t data_len;
@@ -78,7 +81,7 @@ static tag_univ_t univ_tags[] = {
 	{"EOC",               T_PRIM,         FALSE},
 	{"BOOLEAN",           T_PRIM,         FALSE},
 	{"INTEGER",           T_PRIM,         FALSE}, /* TAG_U_INTEGER */
-	{"BIT STRING",        T_PRIM_OR_CONS, FALSE},
+	{"BIT STRING",        T_PRIM_OR_CONS, FALSE}, /* TAG_U_BIT_STRING */
 	{"OCTET STRING",      T_PRIM_OR_CONS, FALSE},
 	{"NULL",              T_PRIM,         FALSE},
 	{"OBJECT IDENTIFIER", T_PRIM,         FALSE}, /* TAG_U_OBJECT_IDENTIFIER */
@@ -110,6 +113,7 @@ static tag_univ_t univ_tags[] = {
 };
 
 #define TAG_U_INTEGER           2
+#define TAG_U_BIT_STRING        3
 #define TAG_U_OBJECT_IDENTIFIER 6
 #define TAG_U_LONG_FORMAT       31
 
@@ -164,9 +168,9 @@ void seq_destruct(seq_t *seq)
 void seq_clear_error(seq_t *seq)
 {
 	if (seq->type != E_ERROR)
-		FATAL_ERROR("%s", "seq_clear_error(): call without error condition!");
+		FATAL_ERROR("seq_clear_error(): call without error condition!");
 	if (seq->errmsg == NULL)
-		FATAL_ERROR("%s", "seq_clear_error(): error condition but no error message!");
+		FATAL_ERROR("seq_clear_error(): error condition but no error message!");
 	free(seq->errmsg);
 }
 
@@ -184,6 +188,16 @@ int seq_has_oid(const seq_t *seq)
 	return (seq->tag_class == TAG_CLASS_UNIVERSAL && seq->tag_number == TAG_U_OBJECT_IDENTIFIER);
 }
 
+int seq_has_integer(const seq_t *seq)
+{
+	return (seq->tag_class == TAG_CLASS_UNIVERSAL && seq->tag_number == TAG_U_INTEGER);
+}
+
+int seq_has_bit_string(const seq_t *seq)
+{
+	return (seq->tag_class == TAG_CLASS_UNIVERSAL && seq->tag_number == TAG_U_BIT_STRING);
+}
+
 pkctrl_t *pkctrl_construct(const unsigned char *data_in, size_t data_in_len)
 {
 	pkctrl_t *ctrl = (pkctrl_t *)malloc(sizeof(pkctrl_t));
@@ -197,11 +211,11 @@ pkctrl_t *pkctrl_construct(const unsigned char *data_in, size_t data_in_len)
 	return ctrl;
 }
 
-void pkctrl_destruct(pkctrl_t *ctrl)
+void pkctrl_destruct(pkctrl_t *ctrl, int keep_silent)
 {
 	if (ctrl->tail != NULL) {
-		if (ctrl->tail->type != E_ERROR)
-			FATAL_ERROR("%s", "ctrl->tail should be NULL!");
+		if (!keep_silent && ctrl->tail->type != E_ERROR)
+			FATAL_ERROR("ctrl->tail should be NULL!");
 		do {
 			seq_t *to_free = ctrl->tail;
 			ctrl->tail = ctrl->tail->parent;
@@ -209,7 +223,7 @@ void pkctrl_destruct(pkctrl_t *ctrl)
 		} while (ctrl->tail != NULL);
 	}
 	if (ctrl->tail != NULL)
-		FATAL_ERROR("%s", "Cette fois-ci c'est encore plus grave ! Incohérence à l'intérieur de pkctrl_destruct()!");
+		FATAL_ERROR("Cette fois-ci c'est encore plus grave ! Incohérence à l'intérieur de pkctrl_destruct()!");
 	free(ctrl);
 }
 
@@ -413,8 +427,19 @@ seq_t *seq_next(pkctrl_t *ctrl)
 	seq_set_len(ctrl->tail, tag.header_len, tag.data_len);
 
 	if (tag.type == T_PRIM) {
+		if (ctrl->tail->index)
+			FATAL_ERROR("Dis donc, ça t'ennuierait de gérer correctement l'index dans les seq_t* ?");
+		ctrl->tail->index = 1;
 		ctrl->tail->type = E_DATA;
 		if (tag.data_len >= 1) {
+
+			if (tag.data_len > MAX_DATA_BLOCK_LEN) {
+				DBG("tag.data_len = %lu (0x%x)\n", tag.data_len, tag.data_len)
+				DBG("maximum allowed value = %lu\n", MAX_DATA_BLOCK_LEN)
+				errmsg = "data block size exceeds maximum allowed value";
+				goto error;
+			}
+
 			ctrl->tail->data = (char *)malloc(tag.data_len);
 			size_t nbread;
 			nbread = vf_read(ctrl->tail->data, 1, (size_t)tag.data_len, &ctrl->vf);

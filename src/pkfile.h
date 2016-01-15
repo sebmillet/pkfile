@@ -73,13 +73,15 @@ struct pkctrl_t;
 typedef struct pkctrl_t pkctrl_t;
 
 pkctrl_t *pkctrl_construct(const unsigned char *data_in, size_t data_in_len);
-void pkctrl_destruct(pkctrl_t *pkf);
+void pkctrl_destruct(pkctrl_t *ctrl, int keep_silent);
 seq_t *pkctrl_head(const pkctrl_t *ctrl);
 
 seq_t *seq_next(pkctrl_t *pkf);
 void seq_clear_error(seq_t *seq);
 int seq_has_string_data(const seq_t *seq);
 int seq_has_oid(const seq_t *seq);
+int seq_has_integer(const seq_t *seq);
+int seq_has_bit_string(const seq_t *seq);
 
 #endif /* PKFILE_H */
 
