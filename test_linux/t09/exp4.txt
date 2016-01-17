@@ -1,0 +1,95 @@
+                 .
+1                └── cons: SEQUENCE, len: 763 (4+759)
+1.1                  ├── cons: SEQUENCE, len: 483 (4+479)
+1.1.1                │   ├── cons: cont [ 0 ], len: 5 (2+3)
+1.1.1.1              │   │   └── prim: INTEGER, len: 3 (2+1)
+1.1.1.1.1            │   │             02
+1.1.2                │   ├── prim: INTEGER, len: 11 (2+9)
+1.1.2.1              │   │         00E38A42059A589E16
+1.1.3                │   ├── cons: SEQUENCE, len: 15 (2+13)
+1.1.3.1              │   │   ├── prim: OBJECT IDENTIFIER, len: 11 (2+9)
+1.1.3.1.1            │   │   │         1.2.840.113549.1.1.11 (RSA-SHA256)
+1.1.3.2              │   │   └── prim: NULL, len: 2 (2+0)
+1.1.4                │   ├── cons: SEQUENCE, len: 20 (2+18)
+1.1.4.1              │   │   └── cons: SET, len: 18 (2+16)
+1.1.4.1.1            │   │       └── cons: SEQUENCE, len: 16 (2+14)
+1.1.4.1.1.1          │   │           ├── prim: OBJECT IDENTIFIER, len: 5 (2+3)
+1.1.4.1.1.1.1        │   │           │         2.5.4.3 (CN)
+1.1.4.1.1.2          │   │           └── prim: UTF8String, len: 9 (2+7)
+1.1.4.1.1.2.1        │   │                     SMT DEV
+1.1.5                │   ├── cons: SEQUENCE, len: 32 (2+30)
+1.1.5.1              │   │   ├── prim: UTCTime, len: 15 (2+13)
+1.1.5.1.1            │   │   │         160116131001Z
+1.1.5.2              │   │   └── prim: UTCTime, len: 15 (2+13)
+1.1.5.2.1            │   │             160215131001Z
+1.1.6                │   ├── cons: SEQUENCE, len: 20 (2+18)
+1.1.6.1              │   │   └── cons: SET, len: 18 (2+16)
+1.1.6.1.1            │   │       └── cons: SEQUENCE, len: 16 (2+14)
+1.1.6.1.1.1          │   │           ├── prim: OBJECT IDENTIFIER, len: 5 (2+3)
+1.1.6.1.1.1.1        │   │           │         2.5.4.3 (CN)
+1.1.6.1.1.2          │   │           └── prim: UTF8String, len: 9 (2+7)
+1.1.6.1.1.2.1        │   │                     SMT DEV
+1.1.7                │   ├── cons: SEQUENCE, len: 294 (4+290)
+1.1.7.1              │   │   ├── cons: SEQUENCE, len: 15 (2+13)
+1.1.7.1.1            │   │   │   ├── prim: OBJECT IDENTIFIER, len: 11 (2+9)
+1.1.7.1.1.1          │   │   │   │         1.2.840.113549.1.1.1 (rsaEncryption)
+1.1.7.1.2            │   │   │   └── prim: NULL, len: 2 (2+0)
+1.1.7.2              │   │   └── prim: BIT STRING, len: 275 (4+1+270)
+1.1.7.2.1            │   │             3082010A  02820101  00D0F2CA  8587C1D3
+                     │   │             D85D917F  2E629BB5  95610D20  1F47D59C
+                     │   │             E256E830  6239AF07  2B6616D3  6A271DCE
+                     │   │             F0B1CFE4  BF6FF0A9  6C00963C  DFEB2665
+                     │   │             F74C9013  B58B7A53  0960D288  65C4F6F5
+                     │   │             175BA059  FB9FD8E5  4C77836F  1B73FDFE
+                     │   │             B4E729EF  6FA265C1  6531D386  2581CEA2
+                     │   │             DA3B5972  EA1027FB  3961B2C0  E375AABF
+                     │   │             9719E075  2D523239  68CF670B  CAE4DDC9
+                     │   │             D694F0FB  17A8C07C  D4FA8E62  E2F6C72B
+                     │   │             D3AE68F4  77D570AA  2289B915  A6BC92A2
+                     │   │             62ABBC89  8910DCAE  3B5FBACE  D26D6761
+                     │   │             48F93B21  35DB3EC1  4AB41CB3  E68EFABB
+                     │   │             C2A8B793  A445686B  FF5B7580  3C9B0328
+                     │   │             EA7C17CF  36030280  16D97E8A  8E87F2DD
+                     │   │             FDF9F247  A6BFA3DA  BA75EBA0  EE992B51
+                     │   │             F889DB6A  C001B9DF  21020301  0001
+1.1.8                │   └── cons: cont [ 3 ], len: 82 (2+80)
+1.1.8.1              │       └── cons: SEQUENCE, len: 80 (2+78)
+1.1.8.1.1            │           ├── cons: SEQUENCE, len: 31 (2+29)
+1.1.8.1.1.1          │           │   ├── prim: OBJECT IDENTIFIER, len: 5 (2+3)
+1.1.8.1.1.1.1        │           │   │         2.5.29.14 (subjectKeyIdentifier)
+1.1.8.1.1.2          │           │   └── prim: OCTET STRING, len: 24 (2+22)
+1.1.8.1.1.2.1        │           │             04149989  750B6C53  4FB1D5D3  0FED88BB
+                     │           │             28D76355  8578
+1.1.8.1.2            │           ├── cons: SEQUENCE, len: 33 (2+31)
+1.1.8.1.2.1          │           │   ├── prim: OBJECT IDENTIFIER, len: 5 (2+3)
+1.1.8.1.2.1.1        │           │   │         2.5.29.35 (authorityKeyIdentifier)
+1.1.8.1.2.2          │           │   └── prim: OCTET STRING, len: 26 (2+24)
+1.1.8.1.2.2.1        │           │             30168014  9989750B  6C534FB1  D5D30FED
+                     │           │             88BB28D7  63558578  
+1.1.8.1.3            │           └── cons: SEQUENCE, len: 14 (2+12)
+1.1.8.1.3.1          │               ├── prim: OBJECT IDENTIFIER, len: 5 (2+3)
+1.1.8.1.3.1.1        │               │         2.5.29.19 (basicConstraints)
+1.1.8.1.3.2          │               └── prim: OCTET STRING, len: 7 (2+5)
+1.1.8.1.3.2.1        │                         30030101  FF
+1.2                  ├── cons: SEQUENCE, len: 15 (2+13)
+1.2.1                │   ├── prim: OBJECT IDENTIFIER, len: 11 (2+9)
+1.2.1.1              │   │         1.2.840.113549.1.1.11 (RSA-SHA256)
+1.2.2                │   └── prim: NULL, len: 2 (2+0)
+1.3                  └── prim: BIT STRING, len: 261 (4+1+256)
+1.3.1                          C053F13A  79A603C7  229C522F  1F70CA88
+                               FBA7D5C8  C2950520  C1B308AF  A7086D01
+                               73DE5D6B  8F5181AD  3D290363  C6EB56C6
+                               9FB4A43A  70367D8B  9C082F4E  EC880CB1
+                               72F93E91  2F4A1DC0  0C535AC0  F756FC19
+                               61195255  257B8194  03B86902  0AC744E3
+                               A09BB38C  B9B5A9C8  203C2125  F9E5BB7C
+                               EDA2D46E  B7B78F44  0BC32EF5  BA40592C
+                               6CCD5621  4A7318D1  A2E556DE  BCF8E713
+                               CC096198  40015585  3DA53090  D86FCC72
+                               BE897AAC  753296BA  212C8C51  3DE05D04
+                               8658B4E8  5560399C  859E1F3C  5535500B
+                               1AA4E52D  A71BAA00  A176CEBB  59A2CE90
+                               DDE00846  1595D3FD  D361AE18  80548E32
+                               E187BC57  80ADACDD  AC9D7B55  B8B3AADB
+                               3934A46E  C3F92DF0  66B124D9  3B908999
+

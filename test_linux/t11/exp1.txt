@@ -1,0 +1,1 @@
+Error: Bad node type, should be of type prim: BIT STRING or OCTET STRING

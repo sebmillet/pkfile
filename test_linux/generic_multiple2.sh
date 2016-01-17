@@ -23,7 +23,7 @@ while [ $i -le $N ]; do
 
 # The sequence below ensures the stderr comes AFTER stdout, not
 # in-between at an uncontrolled location.
-	$PRG -x $PRGARGS -o tmpo.tmp $II > /dev/null 2>tmpe.tmp
+	$PRG $PRGARGS -o tmpo.tmp $II > /dev/null 2>tmpe.tmp
 	cat tmpo.tmp tmpe.tmp > $OO
 	rm tmpo.tmp tmpe.tmp
 

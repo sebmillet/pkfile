@@ -1,0 +1,76 @@
+                 .
+1                └── cons: SEQUENCE, len: 1193 (4+1189)
+1.1                  ├── prim: INTEGER, len: 3 (2+1)
+1.1.1                │         00
+1.2                  ├── prim: INTEGER, len: 261 (4+257)
+1.2.1                │         00D0F2CA8587C1D3D85D917F2E629BB595610D
+                     │         201F47D59CE256E8306239AF072B6616D36A27
+                     │         1DCEF0B1CFE4BF6FF0A96C00963CDFEB2665F7
+                     │         4C9013B58B7A530960D28865C4F6F5175BA059
+                     │         FB9FD8E54C77836F1B73FDFEB4E729EF6FA265
+                     │         C16531D3862581CEA2DA3B5972EA1027FB3961
+                     │         B2C0E375AABF9719E0752D52323968CF670BCA
+                     │         E4DDC9D694F0FB17A8C07CD4FA8E62E2F6C72B
+                     │         D3AE68F477D570AA2289B915A6BC92A262ABBC
+                     │         898910DCAE3B5FBACED26D676148F93B2135DB
+                     │         3EC14AB41CB3E68EFABBC2A8B793A445686BFF
+                     │         5B75803C9B0328EA7C17CF3603028016D97E8A
+                     │         8E87F2DDFDF9F247A6BFA3DABA75EBA0EE992B
+                     │         51F889DB6AC001B9DF21
+1.3                  ├── prim: INTEGER, len: 5 (2+3)
+1.3.1                │         010001
+1.4                  ├── prim: INTEGER, len: 260 (4+256)
+1.4.1                │         325A1FC5B7E65497B24CAA9A51F6F5F62E720C
+                     │         489D75F39D7395F67AE52DB18B9AC96B5F0C58
+                     │         199355362508A1001CC3C30C71550084BB53B1
+                     │         E69269505845046089BB86D2C53460D19ABDB4
+                     │         6E5BC53DFD1AF63E666051EDE43AEDD138104F
+                     │         5F847755BF5A1DA28EF67862C1D6ECDB94835F
+                     │         A12DEF201B955D0E030ECDDCFE8A3CDD09FE65
+                     │         D0D0CAB84C3FB1EA57CCCB900146123DF11120
+                     │         167BCC3DFDE699C39F7EA40B3575515FD5D705
+                     │         0081C6AF763775D21823F757A302CD675F42F9
+                     │         AC29B28D68BBF616B5B76477FCA7DB6FB084A3
+                     │         E8AF6935E5786977E9232AE787D4D557E7A2A2
+                     │         F1A9491C41F710A805685B3D0D5F4B079DCDA5
+                     │         75732B8F23589A5155
+1.5                  ├── prim: INTEGER, len: 132 (3+129)
+1.5.1                │         00EAFC98975CF31D189B85EB180E7AC8D2EE6E
+                     │         9FF8B01AAD01D9C5B091F5661E30C466520808
+                     │         2BDBFA148F9A2FFB0C18EDE9EF749DE6DF3F29
+                     │         CBEA83E5D9FC8ABF57FDC913B3CF83D6CB38D9
+                     │         11417B69676D019E89F106900EE70CCE7A2856
+                     │         20FC3803AE53FDBEAC988348D8898C7A6A1BDA
+                     │         BE67D65F49F0FF3188876ED355BE5B
+1.6                  ├── prim: INTEGER, len: 132 (3+129)
+1.6.1                │         00E3A21DD151C1AFD0314B2971EDDAAB0DEA86
+                     │         2404E88E222DBAD57050E3ADC4876601832806
+                     │         7673D999E6AF43308251A0ECDAA5354950E9C9
+                     │         8CD92566031766A61822B082E57FEEFE0039EE
+                     │         C9CD7C1810E5CA99318C75313F0A2E46207D2E
+                     │         1362B838F581A5A4A8DE8C81DF4CD2ACF05870
+                     │         CC82657BFAB5D8B46511FC85A74933
+1.7                  ├── prim: INTEGER, len: 132 (3+129)
+1.7.1                │         00C75A7A5DD7364D15E6432B9A62165AAF5026
+                     │         3BC2F02C0160538F3A67E967B3EF2D7F9CD241
+                     │         946BEFF2678DA86CF3EB665393993CA873F713
+                     │         0F732A68E2913468764ED0BACD4E1C8C2A2655
+                     │         4925637C9D88C5D9E92EB8A19872FDD361A13C
+                     │         C88911405631DD5058FE9E4A3BA21DB270B8A6
+                     │         CFE829DEF74CE442F28FEB3E913C87
+1.8                  ├── prim: INTEGER, len: 132 (3+129)
+1.8.1                │         00D45C659CE5BCE01C46206CA5D0D473482446
+                     │         C84B9BF91D81B40F731CC38B55114BE4954B3D
+                     │         DC3BF00157E8A1B21BA1B393C3D6E483656CF5
+                     │         8EE4F5B2D9A77727F4D447FF95C3685EA62F65
+                     │         C9F65D92C610DA95585844EC90771AFC694ADF
+                     │         354E9FB6E3B2F3A94DB1713BA7EAAF908F18B3
+                     │         02D7937DBA42F3CC378E341B2C1969
+1.9                  └── prim: INTEGER, len: 132 (3+129)
+1.9.1                          00EA8168E2BE4B8A709D1A2823138FA5B42335
+                               AB394E24CB426A0757696064E33B0AC11587E2
+                               5DE04346B7E5FE1BE53550B8E7A9552C5F79E5
+                               C131443893F4E4FD21CAB71A4B9D76AD94C070
+                               6782960B9FF593516D3D255553E19C3CDECFAC
+                               6B9A4E0A917F9AF0BFEAD70E91B6881C8983CC
+                               01C5BE4233CF38F2A9D7BB3DF2EFD3

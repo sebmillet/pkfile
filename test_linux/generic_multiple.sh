@@ -24,7 +24,7 @@ while [ $i -le $N ]; do
 # The sequence below ensures the stderr comes AFTER stdout, not
 # in-between at an uncontrolled location.
 #    echo $PRG -b $PRGARGS -o $OO $II
-	$PRG -x $PRGARGS $II > $OO 2> /dev/null
+	$PRG $PRGARGS $II > $OO 2> /dev/null
 
 	cmp $RR $OO > /dev/null 2>&1
 	if [ "$?" -ne "0" ]; then

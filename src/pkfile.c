@@ -21,8 +21,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-	/* 10 MB */
-#define MAX_DATA_BLOCK_LEN 10485760
+	/* 100 MB */
+	/* Arbitrary limit, just to protect the program against crazy inputs */
+#define MAX_DATA_BLOCK_LEN 104857600
+
+#define MAX_LEVELS 200
 
 	/*
 	 * vf = Virtual File, brings abstraction layer similar to FILE*.
@@ -298,13 +301,13 @@ seq_t *seq_next(pkctrl_t *ctrl)
 				return NULL;
 			} else {
 				DBG("end of file encountered (1)\n")
-				goto error;
+				goto seq_next_error;
 			}
 		}
 		DBG("-- Removing one seq_t level\n")
 		if (ctrl->tail->consumed > ctrl->tail->total_len) {
 			errmsg = "data size inside sequence exceeds sequence size";
-			goto error;
+			goto seq_next_error;
 		}
 		seq_t *to_free = ctrl->tail;
 		if (ctrl->tail->parent != NULL)
@@ -319,6 +322,10 @@ seq_t *seq_next(pkctrl_t *ctrl)
 	ctrl->tail->index++;
 
 	ctrl->tail = seq_construct_and_attach_to_chain(ctrl->tail);
+	if (ctrl->tail->level > MAX_LEVELS) {
+		errmsg = "too many recursion levels";
+		goto seq_next_error;
+	}
 	ctrl->tail->offset = ctrl->offset;
 
 	int c;
@@ -332,7 +339,7 @@ seq_t *seq_next(pkctrl_t *ctrl)
 		DBG("ctrl->tail->data_len = %li\n", ctrl->tail->data_len)
 		DBG("ctrl->tail->parent = %lu\n", ctrl->tail->parent)
 		DBG("end of file encountered (2)\n")
-		goto error;
+		goto seq_next_error;
 	}
 	char *hh = ctrl->tail->header;
 	hh[cons++] = (char)c;
@@ -352,13 +359,13 @@ seq_t *seq_next(pkctrl_t *ctrl)
 		do {
 			if ((cc = vf_getc(&ctrl->vf)) == EOF) {
 				DBG("end of file encountered (3)\n")
-				goto error;
+				goto seq_next_error;
 			}
 			hh[cons++] = (char)cc;
 		} while (cc & 0x80 && cons < TAG_U_LONG_FORMAT_MAX_BYTES);
 		if (cons == TAG_U_LONG_FORMAT_MAX_BYTES) {
 			errmsg = "tag number too big";
-			goto error;
+			goto seq_next_error;
 		}
 		int rev;
 		long unsigned multi = 1;
@@ -392,7 +399,7 @@ seq_t *seq_next(pkctrl_t *ctrl)
 	int c2;
 	if ((c2 = vf_getc(&ctrl->vf)) == EOF) {
 		DBG("end of file encountered (4)\n")
-		goto error;
+		goto seq_next_error;
 	}
 
 	hh[cons++] = (char)c2;
@@ -403,10 +410,10 @@ seq_t *seq_next(pkctrl_t *ctrl)
 		n = (c2 & 0x7F);
 		if (n > LENGTH_MULTIBYTES_MAX_BYTES - 1) {
 			errmsg = "number of bytes to encode length exceeds maximum";
-			goto error;
+			goto seq_next_error;
 		} else if (n == 0) {
 			errmsg = "number of bytes to encode length cannot be null";
-			goto error;
+			goto seq_next_error;
 		}
 		tag.data_len = 0;
 		int i;
@@ -414,7 +421,7 @@ seq_t *seq_next(pkctrl_t *ctrl)
 		for (i = 1; i <= n; ++i) {
 			if ((cc = vf_getc(&ctrl->vf)) == EOF) {
 				DBG("end of file encountered (5)\n")
-				goto error;
+				goto seq_next_error;
 			}
 			hh[cons++] = (char)cc;
 			tag.data_len <<= 8;
@@ -452,7 +459,7 @@ seq_t *seq_next(pkctrl_t *ctrl)
 				DBG("tag.data_len = %lu (0x%x)\n", tag.data_len, tag.data_len)
 				DBG("maximum allowed value = %lu\n", MAX_DATA_BLOCK_LEN)
 				errmsg = "data block size exceeds maximum allowed value";
-				goto error;
+				goto seq_next_error;
 			}
 
 			ctrl->tail->data = (char *)malloc(tag.data_len);
@@ -463,7 +470,7 @@ seq_t *seq_next(pkctrl_t *ctrl)
 			if (nbread != tag.data_len) {
 				if (vf_eof(&ctrl->vf)) {
 					DBG("end of file encountered (6)\n")
-					goto error;
+					goto seq_next_error;
 				} else {
 					FATAL_ERROR("%s", "Internal inconsistency");
 				}
@@ -496,7 +503,7 @@ seq_t *seq_next(pkctrl_t *ctrl)
 
 	return ctrl->tail;
 
-error:
+seq_next_error:
 	ctrl->tail->type = E_ERROR;
 	size_t l = strlen(prefix) + strlen(errmsg) + 30;
 	ctrl->tail->errmsg = malloc(l);

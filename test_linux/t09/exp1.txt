@@ -1,0 +1,70 @@
+                 .
+1                └── cons: SEQUENCE, len: 395 (4+391)
+1.1                  ├── cons: SEQUENCE, len: 305 (4+301)
+1.1.1                │   ├── cons: cont [ 0 ], len: 5 (2+3)
+1.1.1.1              │   │   └── prim: INTEGER, len: 3 (2+1)
+1.1.1.1.1            │   │             02
+1.1.2                │   ├── prim: INTEGER, len: 11 (2+9)
+1.1.2.1              │   │         00CAB6A468722156E1
+1.1.3                │   ├── cons: SEQUENCE, len: 12 (2+10)
+1.1.3.1              │   │   └── prim: OBJECT IDENTIFIER, len: 10 (2+8)
+1.1.3.1.1            │   │             1.2.840.10045.4.3.2 (ecdsa-with-SHA256)
+1.1.4                │   ├── cons: SEQUENCE, len: 34 (2+32)
+1.1.4.1              │   │   └── cons: SET, len: 32 (2+30)
+1.1.4.1.1            │   │       └── cons: SEQUENCE, len: 30 (2+28)
+1.1.4.1.1.1          │   │           ├── prim: OBJECT IDENTIFIER, len: 5 (2+3)
+1.1.4.1.1.1.1        │   │           │         2.5.4.3 (CN)
+1.1.4.1.1.2          │   │           └── prim: UTF8String, len: 23 (2+21)
+1.1.4.1.1.2.1        │   │                     milletseb@laposte.net
+1.1.5                │   ├── cons: SEQUENCE, len: 32 (2+30)
+1.1.5.1              │   │   ├── prim: UTCTime, len: 15 (2+13)
+1.1.5.1.1            │   │   │         151219125035Z
+1.1.5.2              │   │   └── prim: UTCTime, len: 15 (2+13)
+1.1.5.2.1            │   │             161218125035Z
+1.1.6                │   ├── cons: SEQUENCE, len: 34 (2+32)
+1.1.6.1              │   │   └── cons: SET, len: 32 (2+30)
+1.1.6.1.1            │   │       └── cons: SEQUENCE, len: 30 (2+28)
+1.1.6.1.1.1          │   │           ├── prim: OBJECT IDENTIFIER, len: 5 (2+3)
+1.1.6.1.1.1.1        │   │           │         2.5.4.3 (CN)
+1.1.6.1.1.2          │   │           └── prim: UTF8String, len: 23 (2+21)
+1.1.6.1.1.2.1        │   │                     milletseb@laposte.net
+1.1.7                │   ├── cons: SEQUENCE, len: 91 (2+89)
+1.1.7.1              │   │   ├── cons: SEQUENCE, len: 21 (2+19)
+1.1.7.1.1            │   │   │   ├── prim: OBJECT IDENTIFIER, len: 9 (2+7)
+1.1.7.1.1.1          │   │   │   │         1.2.840.10045.2.1 (id-ecPublicKey)
+1.1.7.1.2            │   │   │   └── prim: OBJECT IDENTIFIER, len: 10 (2+8)
+1.1.7.1.2.1          │   │   │             1.2.840.10045.3.1.7 (prime256v1)
+1.1.7.2              │   │   └── prim: BIT STRING, len: 68 (2+1+65)
+1.1.7.2.1            │   │             04FBFBAD  1E953577  EE8C357F  3AFC07C3
+                     │   │             769331A1  4A3A7C74  450E5CB1  F75907DB
+                     │   │             063350BD  3BA2741C  0B3FD655  BE807FF1
+                     │   │             21C21FF8  EEADC850  D0F00FF5  EDEC7F6A
+                     │   │             50
+1.1.8                │   └── cons: cont [ 3 ], len: 82 (2+80)
+1.1.8.1              │       └── cons: SEQUENCE, len: 80 (2+78)
+1.1.8.1.1            │           ├── cons: SEQUENCE, len: 31 (2+29)
+1.1.8.1.1.1          │           │   ├── prim: OBJECT IDENTIFIER, len: 5 (2+3)
+1.1.8.1.1.1.1        │           │   │         2.5.29.14 (subjectKeyIdentifier)
+1.1.8.1.1.2          │           │   └── prim: OCTET STRING, len: 24 (2+22)
+1.1.8.1.1.2.1        │           │             0414FDD8  6A7102E9  3D9F7FFF  7B7431EB
+                     │           │             9A7226C5  3C67
+1.1.8.1.2            │           ├── cons: SEQUENCE, len: 33 (2+31)
+1.1.8.1.2.1          │           │   ├── prim: OBJECT IDENTIFIER, len: 5 (2+3)
+1.1.8.1.2.1.1        │           │   │         2.5.29.35 (authorityKeyIdentifier)
+1.1.8.1.2.2          │           │   └── prim: OCTET STRING, len: 26 (2+24)
+1.1.8.1.2.2.1        │           │             30168014  FDD86A71  02E93D9F  7FFF7B74
+                     │           │             31EB9A72  26C53C67  
+1.1.8.1.3            │           └── cons: SEQUENCE, len: 14 (2+12)
+1.1.8.1.3.1          │               ├── prim: OBJECT IDENTIFIER, len: 5 (2+3)
+1.1.8.1.3.1.1        │               │         2.5.29.19 (basicConstraints)
+1.1.8.1.3.2          │               └── prim: OCTET STRING, len: 7 (2+5)
+1.1.8.1.3.2.1        │                         30030101  FF
+1.2                  ├── cons: SEQUENCE, len: 12 (2+10)
+1.2.1                │   └── prim: OBJECT IDENTIFIER, len: 10 (2+8)
+1.2.1.1              │             1.2.840.10045.4.3.2 (ecdsa-with-SHA256)
+1.3                  └── prim: BIT STRING, len: 74 (2+1+71)
+1.3.1                          30450221  00EB168C  4D65668E  314B15FD
+                               C65C2E7D  6E34D885  F175628B  E0D288D3
+                               999F72F7  9802207B  E464B8FF  1D3A5A15
+                               9670D349  95F00CB0  7FFF1A2D  38E44CDE
+                               5E87339E  E41985

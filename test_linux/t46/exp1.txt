@@ -1,0 +1,2 @@
+Warning: primitive/constructed bit mismatch, enforcing primitive
+Error: offset 8: data block size exceeds maximum allowed value

@@ -1,4 +1,4 @@
 #!/bin/sh
 
-../generic_multiple.sh "--password pwd1" 3 "pem2der test EC (62)" "ece" "tmp" "exp" ".pem" ".der" $1
+../generic_multiple.sh "-x --password pwd1" 3 "pkfile test" "ece" "tmp" "exp" ".pem" ".der" $1
 

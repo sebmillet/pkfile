@@ -1,0 +1,8 @@
+                 .
+1                └── cons: SEQUENCE, len: 71 (2+69)
+1.1                  ├── prim: INTEGER, len: 35 (2+33)
+1.1.1                │         00EB168C4D65668E314B15FDC65C2E7D6E34D8
+                     │         85F175628BE0D288D3999F72F798
+1.2                  └── prim: INTEGER, len: 34 (2+32)
+1.2.1                          7BE464B8FF1D3A5A159670D34995F00CB07FFF
+                               1A2D38E44CDE5E87339EE41985
