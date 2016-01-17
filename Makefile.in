@@ -324,7 +324,7 @@ top_srcdir = @top_srcdir@
 SUBDIRS = src
 ACLOCAL_AMFLAGS = -I admin
 dist_doc_DATA = README
-EXTRA_DIST = bootstrap
+EXTRA_DIST = bootstrap test_linux makefile.mingw makefile.vc
 appsdir = $(datadir)/applications
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-recursive

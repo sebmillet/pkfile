@@ -68,9 +68,9 @@ static const char *tree_strings[] = {
 	 *
 	 * A value of -1 means there is no limit.
 	 * */
-int opt_max_depth = -1;
-char *file_in = NULL;
-char *file_out = NULL;
+int opt_max_level = -1;
+char *opt_file_in = NULL;
+char *opt_file_out = NULL;
 
 int out_level = L_NORMAL;
 
@@ -82,9 +82,11 @@ int assume_der = FALSE;
 
 int opt_bin = FALSE;
 char *opt_node = NULL;
+char *opt_node_open = NULL;
 
 int opt_print_offset = FALSE;
-int opt_embedded = FALSE;
+
+int opt_flat = FALSE;
 
 typedef struct nodes_t nodes_t;
 struct nodes_t {
@@ -233,21 +235,25 @@ ssize_t file_get_size(const char* filename)
 static void usage()
 {
 	fprintf(stderr, "Usage: %s [options] [FILE]\n", PACKAGE_NAME);
-	fprintf(stderr, "Extract sequences of PKCS files.\n");
+	fprintf(stderr, "Display or extract sequences inside PKCS files.\n");
 	fprintf(stderr, "This program will automatically detect whether PEM format\n");
 	fprintf(stderr, "is being used, or DER, unless started with --inform.\n");
-	fprintf(stderr, "  -h  --help          print this usage and exit\n");
-	fprintf(stderr, "  -V  --verbose       verbose output\n");
-	fprintf(stderr, "  -D  --debug         debug output\n");
-	fprintf(stderr, "  -v  --version       print version information and exit\n");
-	fprintf(stderr, "  -d  --depth n       set max depth to n (default: -1)\n");
-	fprintf(stderr, "                      -1 = no maximum depth\n");
-	fprintf(stderr, "  -p  --password pwd  Set password\n");
-	fprintf(stderr, "  -i  --inform format Set format. Either pem or der\n");
-	fprintf(stderr, "  -b  --bin           Outputs binary (der encoded) data\n");
-	fprintf(stderr, "      --offset        Print file offset before node numbers\n");
-	fprintf(stderr, "  -o  --out           output to file\n");
-	fprintf(stderr, "  --                  end of parameters, next option is file name\n");
+	fprintf(stderr, "  -h  --help           print this usage and exit\n");
+	fprintf(stderr, "  -v  --version        print version information and exit\n");
+	fprintf(stderr, "  -V  --verbose        verbose output\n");
+	fprintf(stderr, "  -l  --level n        set max depth level to n (default: -1)\n");
+	fprintf(stderr, "                       -1 = no maximum depth level\n");
+	fprintf(stderr, "      --offset         print file offset before node numbers\n");
+	fprintf(stderr, "      --flat           print data structure without hierarchical information\n");
+	fprintf(stderr, "  -p  --password pwd   set password\n");
+	fprintf(stderr, "  -x  --extract        output binary data\n");
+	fprintf(stderr, "  -f  --inform format  set format. Either pem or der\n");
+	fprintf(stderr, "  -n  --node NODE      output only node NODE. NODE name is a sequence of\n");
+	fprintf(stderr, "                       integers separated by dots, like 1.3.1\n");
+	fprintf(stderr, "  -N  --node-open NODE for a NODE of type BIT STRING or OCTET STRING, work\n");
+	fprintf(stderr, "                       on NODE data assuming it is der-encoded.\n");
+	fprintf(stderr, "  -o  --out            output to file\n");
+	fprintf(stderr, "  --                   end of parameters, next option is file name\n");
 	fprintf(stderr, "If FILE is not specified, read standard input.\n");
 	exit(0);
 }
@@ -265,7 +271,7 @@ static void version()
 
 static void opt_check(unsigned int n, const char *opt)
 {
-	static int defined_options[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	static int defined_options[11] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 	assert(n < sizeof(defined_options) / sizeof(*defined_options));
 
@@ -331,20 +337,20 @@ if (++a >= argc) { \
 		} else if (!strcmp(argv[a], "--out") || !strcmp(argv_a_short, "-o")) {
 			opt_check(2, argv[a]);
 			OPT_WITH_VALUE_CHECK
-			file_out = argv[a];
+			opt_file_out = argv[a];
 		} else if (!strcmp(argv[a], "--password") || !strcmp(argv_a_short, "-p")) {
 			opt_check(3, argv[a]);
 			OPT_WITH_VALUE_CHECK
 			opt_password = argv[a];
-		} else if (!strcmp(argv[a], "--inform") || !strcmp(argv_a_short, "-i")) {
+		} else if (!strcmp(argv[a], "--inform") || !strcmp(argv_a_short, "-f")) {
 			opt_check(4, argv[a]);
 			OPT_WITH_VALUE_CHECK
 			opt_inform = argv[a];
-		} else if (!strcmp(argv[a], "--depth") || !strcmp(argv_a_short, "-d")) {
+		} else if (!strcmp(argv[a], "--level") || !strcmp(argv_a_short, "-l")) {
 			opt_check(5, argv[a]);
 			OPT_WITH_VALUE_CHECK
-			opt_max_depth = atoi(argv[a]);
-		} else if (!strcmp(argv[a], "--bin") || !strcmp(argv_a_short, "-b")) {
+			opt_max_level = atoi(argv[a]);
+		} else if (!strcmp(argv[a], "--extract") || !strcmp(argv_a_short, "-x")) {
 			opt_check(6, argv[a]);
 			opt_bin = TRUE;
 		} else if (!strcmp(argv[a], "--node") || !strcmp(argv_a_short, "-n")) {
@@ -354,9 +360,13 @@ if (++a >= argc) { \
 		} else if (!strcmp(argv[a], "--offset")) {
 			opt_check(8, argv[a]);
 			opt_print_offset = TRUE;
-		} else if (!strcmp(argv[a], "--embedded") || !strcmp(argv_a_short, "-e")) {
+		} else if (!strcmp(argv[a], "--node-open") || !strcmp(argv_a_short, "-N")) {
 			opt_check(9, argv[a]);
-			opt_embedded = TRUE;
+			OPT_WITH_VALUE_CHECK
+			opt_node_open = argv[a];
+		} else if (!strcmp(argv[a], "--flat")) {
+			opt_check(10, argv[a]);
+			opt_flat = TRUE;
 		} else if (argv[a][0] == '-') {
 			if (strcmp(argv[a], "--")) {
 				fprintf(stderr, "%s: invalid option -- '%s'\n", PACKAGE_NAME, argv[a]);
@@ -367,8 +377,8 @@ if (++a >= argc) { \
 				break;
 			}
 		} else {
-			if (!file_in) {
-				file_in = argv[a];
+			if (!opt_file_in) {
+				opt_file_in = argv[a];
 			} else {
 				fprintf(stderr, "%s: invalid argument -- '%s'\n", PACKAGE_NAME, argv[a]);
 				a = -1;
@@ -382,11 +392,11 @@ if (++a >= argc) { \
 		if (shortopt_nb == 0)
 			++a;
 	}
-	if ((a >= 1 && a < argc - 1) || (a >= 1 && a == argc - 1 && file_in)) {
+	if ((a >= 1 && a < argc - 1) || (a >= 1 && a == argc - 1 && opt_file_in)) {
 		fprintf(stderr, "%s: trailing options.\n", PACKAGE_NAME);
 		a = -1;
 	} else if (a >= 1 && a == argc - 1) {
-		file_in = argv[a];
+		opt_file_in = argv[a];
 	} else if (missing_option_value) {
 		fprintf(stderr, "%s: option '%s' requires one argument\n", PACKAGE_NAME, missing_option_value);
 	}
@@ -595,13 +605,15 @@ void print_tree(const seq_t *seq, const seq_t *seq_head, FILE *fout, int termina
 /* FIXME */
 #define NODES_STR_MAX_LEN 100
 
-	if (opt_max_depth >= 0 && seq->level > opt_max_depth) return;
+	if (opt_max_level >= 0 && seq->level > opt_max_level) return;
 
 	if (!terminal) {
 		if (!*callctrl) {
-			if (opt_print_offset)
-				fprintf(fout, "%6s  ", "");
-			fprintf(fout, "%17s.\n", "");
+			if (!opt_flat) {
+				if (opt_print_offset)
+					fprintf(fout, "%6s  ", "");
+				fprintf(fout, "%17s.\n", "");
+			}
 			*callctrl = TRUE;
 		}
 
@@ -610,13 +622,19 @@ void print_tree(const seq_t *seq, const seq_t *seq_head, FILE *fout, int termina
 
 		char buf1[NODES_STR_MAX_LEN];
 		node2str(buf1, sizeof(buf1), seq_head, FALSE);
-		fprintf(fout, "%-15s  ", buf1);
+		if (!opt_flat)
+			fprintf(fout, "%-15s  ", buf1);
+		else
+			fprintf(fout, "%s: ", buf1);
 
-		const seq_t *s;
-		for (s = seq_head; s; s = s->child) {
-			assert(s->tree >= 0 && s->tree < sizeof(tree_strings) / sizeof(*tree_strings));
-			fputs(tree_strings[s->tree], fout);
+		if (!opt_flat) {
+			const seq_t *s;
+			for (s = seq_head; s; s = s->child) {
+				assert(s->tree >= 0 && s->tree < sizeof(tree_strings) / sizeof(*tree_strings));
+				fputs(tree_strings[s->tree], fout);
+			}
 		}
+
 		fprintf(fout, "%s: %s, len: %li",
 			seq->tag_type_str, seq->tag_name, seq->total_len);
 		if (seq->type == E_DATA && seq_has_bit_string(seq))
@@ -638,30 +656,35 @@ void print_tree(const seq_t *seq, const seq_t *seq_head, FILE *fout, int termina
 		if (is_oid)
 			loop_once = TRUE;
 		if (is_string) {
-			period1 = 38;
+			period1 = (opt_flat ? 76 : 38);
 			period2 = 0;
 		} else if (is_integer) {
-			period1 = 19;
+			period1 = (opt_flat ? 0 : 19);
 			period2 = 0;
 		} else {
-			period1 = 16;
+			period1 = (opt_flat ? 32 : 16);
 			period2 = 4;
 		}
 		int has_looped_at_least_once = FALSE;
 		for (i = 0; loop_once || i < seq->data_len - shift1; ++i) {
-			if (!terminal) {
-				if (!has_looped_at_least_once) {
-					char bf1[NODES_STR_MAX_LEN];
-					node2str(bf1, sizeof(bf1), seq_head, TRUE);
-					if (opt_print_offset)
-						fprintf(fout, "%6s  ", "");
+			if (!has_looped_at_least_once) {
+				char bf1[NODES_STR_MAX_LEN];
+				node2str(bf1, sizeof(bf1), seq_head, TRUE);
+				if (opt_print_offset)
+					fprintf(fout, "%6s  ", "");
+				if (!opt_flat)
 					fprintf(fout, "%-15s  ", bf1);
-				} else if (loop_once || (period1 && !(i % period1))) {
+				else
+					fprintf(fout, "%s: ", bf1);
+			} else if (loop_once || (period1 && !(i % period1))) {
+					if (!opt_flat) {
 						if (opt_print_offset)
 							fprintf(fout, "%6s  ", "");
 						fprintf(fout, "%15s  ", "");
-				}
-				if (loop_once || (period1 && !(i % period1))) {
+					}
+			}
+			if (loop_once || (period1 && !(i % period1))) {
+				if (!opt_flat) {
 					const seq_t *s;
 					for (s = seq_head; s; s = s->child) {
 						tree_t t = s->tree;
@@ -802,8 +825,9 @@ parse_opt_node_error:
 	return nhead;
 }
 
-int manage_pkdata(const unsigned char *pkdata, size_t pkdata_len, const nodes_t *nodes, int embed, FILE *fout)
+int manage_pkdata(const unsigned char *pkdata, size_t pkdata_len, const nodes_t *nodes, int analyze_embedded_data, FILE *fout)
 {
+	DBG("manage_pkdata() start\n")
 	pkctrl_t *ctrl = pkctrl_construct(pkdata, pkdata_len);
 
 	int matched_at_least_once = FALSE;
@@ -825,17 +849,18 @@ int manage_pkdata(const unsigned char *pkdata, size_t pkdata_len, const nodes_t 
 
 		matched_at_least_once = TRUE;
 
-		if (embed) {
+		if (analyze_embedded_data) {
 			if (s) {
-				outln_error("Useless use of -e option for a non data block node");
+				outln_error("Bad node type, should be of type prim: BIT STRING or OCTET STRING");
 				r = 0;
 				break;
-			} else if (seq->type != E_DATA || !seq_has_bit_string(seq)) {
-				outln_error("Node is not BIT STRING, cannot embed analyzis");
+			} else if (seq->type != E_DATA || (!seq_has_bit_string(seq) && !seq_has_octet_string(seq))) {
+				outln_error("Bad node type, should be of type prim: BIT STRING or OCTET STRING");
 				r = 0;
 				break;
 			} else {
-				r = manage_pkdata((const unsigned char *)seq->data + 1, seq->data_len - 1, NULL, FALSE, fout);
+				int shift1 = (seq_has_bit_string(seq) ? 1 : 0);
+				r = manage_pkdata((const unsigned char *)seq->data + shift1, seq->data_len - shift1, NULL, FALSE, fout);
 			}
 		} else {
 			if (!opt_bin) {
@@ -858,6 +883,8 @@ int manage_pkdata(const unsigned char *pkdata, size_t pkdata_len, const nodes_t 
 
 	pkctrl_destruct(ctrl, r != 1);
 
+	DBG("manage_pkdata() end\n")
+
 	return r;
 }
 
@@ -865,27 +892,33 @@ int main(int argc, char **argv)
 {
 const size_t STDIN_BUFSIZE = 1024;
 
+	unsigned char *data_in = NULL;
+	unsigned char *data_out = NULL;
+	nodes_t *nodes = NULL;
+	FILE *fout = NULL;
+	int retval = -999;
+
 	parse_options(argc, argv);
 
-	nodes_t *nodes = NULL;
-	if (opt_node) {
-		if (!(nodes = parse_opt_node(opt_node))) {
-			outln_error("bad nodes list");
-			exit(-10);
-		}
+	if (opt_node && opt_node_open) {
+		outln_error("Only one of -n and -N can be used at a time");
+		usage();
 	}
-	if (opt_embedded && !nodes) {
-		outln_error("-e option needs -n to select the node it applies to");
-		exit(-11);
+	char *opt_n = (opt_node ? opt_node : opt_node_open);
+	int analyze_embedded_data = (opt_node_open != NULL);
+	if (opt_n) {
+		if (!(nodes = parse_opt_node(opt_n))) {
+			outln_error("bad nodes list");
+			usage();
+		}
 	}
 	if (opt_bin && opt_print_offset) {
 		outln_error("--offset cannot be used with option -b");
-		exit(-12);
+		usage();
 	}
 
-	unsigned char *data_in = NULL;
 	ssize_t size;
-	if (!file_in) {
+	if (!opt_file_in) {
 		outln(L_VERBOSE, "Reading from stdin");
 		size = 0;
 		while (!feof(stdin)) {
@@ -895,27 +928,27 @@ const size_t STDIN_BUFSIZE = 1024;
 			if (nr != STDIN_BUFSIZE) {
 				if (ferror(stdin) || !feof(stdin)) {
 					outln_error("reading input");
-					exit(-6);
+					goto main_error;
 				}
 			}
 			size += nr;
 		}
 		data_in = realloc(data_in, size);
 	} else {
-		outln(L_VERBOSE, "Reading from file %s", file_in);
+		outln(L_VERBOSE, "Reading from file %s", opt_file_in);
 		FILE *fin;
-		if ((size = file_get_size(file_in)) < 0) {
+		if ((size = file_get_size(opt_file_in)) < 0) {
 			outln_errno(errno);
-			exit(-2);
+			goto main_error;
 		}
-		if (!(fin = fopen(file_in, "rb"))) {
+		if (!(fin = fopen(opt_file_in, "rb"))) {
 			outln_errno(errno);
-			exit(-3);
+			goto main_error;
 		}
 		data_in = malloc(size + 1);
 		if ((ssize_t)fread(data_in, 1, size, fin) != size) {
 			outln_errno(errno);
-			exit(-4);
+			goto main_error;
 		}
 		fclose(fin);
 	}
@@ -930,7 +963,6 @@ const size_t STDIN_BUFSIZE = 1024;
 	}
 
 	int data_in_is_pem = FALSE;
-	unsigned char *data_out = NULL;
 	size_t data_out_len = 0;
 
 #ifdef HAS_LIB_OPENSSL
@@ -957,25 +989,26 @@ const size_t STDIN_BUFSIZE = 1024;
 		pkdata_len = data_out_len;
 		if (!pkdata || data_out_len == 0) {
 			outln_error("No PEM data available");
-			exit(-8);
+			goto main_error;
 		}
 	}
 
-	FILE *fout;
-	if (!file_out) {
+	if (!opt_file_out) {
 		DBG("Output to stdout\n")
 		fout = stdout;
 	} else {
-		DBG("Output to file %s\n", file_out)
-		if (!(fout = fopen(file_out, "wb"))) {
+		DBG("Output to file %s\n", opt_file_out)
+		if (!(fout = fopen(opt_file_out, "wb"))) {
 			outln_errno(errno);
-			exit(-5);
+			goto main_error;
 		}
 	}
 
-	manage_pkdata(pkdata, pkdata_len, nodes, opt_embedded, fout);
+	retval = (manage_pkdata(pkdata, pkdata_len, nodes, analyze_embedded_data, fout) == 1 ? 0 : -999);
 
-	if (file_out)
+main_error:
+
+	if (opt_file_out && fout)
 		fclose(fout);
 
 	if (data_out)
@@ -984,5 +1017,7 @@ const size_t STDIN_BUFSIZE = 1024;
 		free(data_in);
 
 	destruct_nodes(nodes);
+
+	return retval;
 }
 

@@ -24,6 +24,17 @@
 	/* 10 MB */
 #define MAX_DATA_BLOCK_LEN 10485760
 
+	/*
+	 * vf = Virtual File, brings abstraction layer similar to FILE*.
+	 *
+	 * Initially reads would be done directly on FILE*, now it is done in-memory but I
+	 * wanted to keep the semantic of i/o operations.
+	 * openssl's BIO could be used instead but I wanted this program to be able to be
+	 * compiled without openssl (although linking with libssl/libcrypto is the normal situation).
+	 *
+	 * So I implemented a very minimalistic vf layer.
+	 *
+	 * */
 typedef struct {
 	const unsigned char *data;
 	size_t data_len;
@@ -37,14 +48,12 @@ struct pkctrl_t {
 	seq_t *tail;
 };
 
-#ifdef DEBUG
 static const char *short_classes[] = {
 	"univ", /* CLASS_UNIVERSAL */
 	"appl", /* CLASS_APPLICATION */
 	"cont", /* CLASS_CONTEXT_SPECIFIC */
 	"priv"  /* CLASS_PRIVATE */
 };
-#endif
 
 #define TAG_CLASS_UNIVERSAL        0
 #define TAG_CLASS_APPLICATION      1
@@ -58,7 +67,7 @@ static const char *short_types[] = {
 typedef enum {
 	T_PRIM = 0,
 	T_CONS = 1,
-	T_PRIM_OR_CONS = 2,  /* (does not belong to DER specs, used here-only */
+	T_PRIM_OR_CONS = 2, /* (does not belong to DER specs, used here-only */
 	T_NA = -1           /* (same as above: value used here-only) */
 } type_t;
 
@@ -82,7 +91,7 @@ static tag_univ_t univ_tags[] = {
 	{"BOOLEAN",           T_PRIM,         FALSE},
 	{"INTEGER",           T_PRIM,         FALSE}, /* TAG_U_INTEGER */
 	{"BIT STRING",        T_PRIM_OR_CONS, FALSE}, /* TAG_U_BIT_STRING */
-	{"OCTET STRING",      T_PRIM_OR_CONS, FALSE},
+	{"OCTET STRING",      T_PRIM_OR_CONS, FALSE}, /* TAG_U_OCTET_STRING */
 	{"NULL",              T_PRIM,         FALSE},
 	{"OBJECT IDENTIFIER", T_PRIM,         FALSE}, /* TAG_U_OBJECT_IDENTIFIER */
 	{"OBJECT DESCRIPTOR", T_PRIM_OR_CONS, FALSE},
@@ -96,7 +105,7 @@ static tag_univ_t univ_tags[] = {
 	{"(reserved)",        T_NA,           FALSE},
 	{"SEQUENCE",          T_CONS,         FALSE},
 	{"SET",               T_CONS,         FALSE},
-	{"NUMERICSTRING",     T_PRIM_OR_CONS, FALSE},
+	{"NUMERICSTRING",     T_PRIM_OR_CONS, TRUE},
 	{"PRINTABLESTRING",   T_PRIM_OR_CONS, TRUE},
 	{"T61STRING",         T_PRIM_OR_CONS, TRUE},
 	{"VIDEOTEXSTRING",    T_PRIM_OR_CONS, TRUE},
@@ -114,6 +123,7 @@ static tag_univ_t univ_tags[] = {
 
 #define TAG_U_INTEGER           2
 #define TAG_U_BIT_STRING        3
+#define TAG_U_OCTET_STRING      4
 #define TAG_U_OBJECT_IDENTIFIER 6
 #define TAG_U_LONG_FORMAT       31
 
@@ -125,7 +135,7 @@ static void get_tag_name(char *s, const size_t slen, const int tag_class, const 
 	} else if (tag_class == TAG_CLASS_UNIVERSAL) {
 		snprintf(s, slen, "![ %i ]", tag_number);
 	} else {
-		snprintf(s, slen, "[ %i ]", tag_number);
+		snprintf(s, slen, "%s [ %i ]", short_classes[tag_class], tag_number);
 	}
 }
 
@@ -196,6 +206,11 @@ int seq_has_integer(const seq_t *seq)
 int seq_has_bit_string(const seq_t *seq)
 {
 	return (seq->tag_class == TAG_CLASS_UNIVERSAL && seq->tag_number == TAG_U_BIT_STRING);
+}
+
+int seq_has_octet_string(const seq_t *seq)
+{
+	return (seq->tag_class == TAG_CLASS_UNIVERSAL && seq->tag_number == TAG_U_OCTET_STRING);
 }
 
 pkctrl_t *pkctrl_construct(const unsigned char *data_in, size_t data_in_len)

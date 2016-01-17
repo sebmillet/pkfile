@@ -1,7 +1,7 @@
    pkfile, a portable utility to work on pkcs files
    ================================================
 
-Date: 2016-01-09 23:19 +0100
+Date: 2016-01-17 11:51 +0100
 
 Contents:
 
@@ -14,18 +14,21 @@ Contents:
 
 I.    WHAT IS PKFILE?
 
-It is a minimalistic program to work on PKCS files.
-It provides the following features:
+It is a program to work on PKCS files.
+It can read PEM-encoded and DER-encoded files and by default it will work out
+which encoding is being used, unless you force it with -f option.
+
+It provides the following features.
 
 Launched without option:
-- Take input and output it in a der-encoded way.
-  If the input is already der-encoded, no transformation is done and the
+- Display DER-encoded data in a hierarchical, tree-like, presentation.
+
+Launched with -x option
+- Take input and output it in a DER-encoded way.
+  If the input is already DER-encoded, no transformation is done and the
   output is just identical to the input.
   If the input is PEM-encoded, pkfile will perform a decoding of PEM content,
   and decrypt data if applicable.
-
-Launched with -t option
-- Display der-encoded data in a hierarchical presentation
 
 See URL
     https://en.wikipedia.org/wiki/X.690#DER_encoding
@@ -33,23 +36,25 @@ for details about DER encoding.
 
 *IMPORTANT*
   pkfile will decrypt PEM data if need be, and by default will output the
-  content in a der-encoded way => not encrypted.
-  Therefore pkfile is not suitable to deal with keys in production.
+  content in a DER-encoded way => not encrypted.
+  Therefore pkfile is not suitable to deal with private keys in a production
+  environment.
 
   * IT IS MEANT FOR TRAINING PURPOSES ONLY *
-
-  Only test keys shall be dealt with using pkfile.
 
 
 
 II.   WHY PKFILE?
 
 It is meant to be didactic.
-It eases dealing with PKCS files at a very low level, like, manually checking
-a certificate by doing the RSA or EC calculations directly with key data.
+It eases dealing with PKCS files at a low level, like, manually checking a
+certificate by doing the RSA or EC calculations directly with key data.
 
 pkfile will help calculate the hash of TBSCertificate and extract integers
 from key data.
+
+Using -N option, it can also enter a data block (of type BIT STRING or OCTET
+STRING) to parse it as if being a standalone DER-encoded file.
 
 
 

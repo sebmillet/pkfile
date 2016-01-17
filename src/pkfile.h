@@ -82,6 +82,7 @@ int seq_has_string_data(const seq_t *seq);
 int seq_has_oid(const seq_t *seq);
 int seq_has_integer(const seq_t *seq);
 int seq_has_bit_string(const seq_t *seq);
+int seq_has_octet_string(const seq_t *seq);
 
 #endif /* PKFILE_H */
 
