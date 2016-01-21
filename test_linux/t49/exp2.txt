@@ -1,0 +1,8 @@
+                 .
+1                ├── cons: SEQUENCE, len: 18 (2+16)
+1.1              │   ├── cons: BIT STRING, len: 2 (indefinite)
+1.1.1            │   │   ├── prim: BIT STRING, len: 5 (2+1+2)
+1.1.1.1          │   │   │         0A3B
+1.1.2            │   │   ├── prim: BIT STRING, len: 7 (2+1+4)
+1.1.2.1          │   │   │         5F291CD0  
+Error: offset 16: unexpected end of file

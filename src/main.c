@@ -639,6 +639,8 @@ void print_tree(const seq_t *seq, const seq_t *seq_head, FILE *fout, int termina
 			seq->tag_type_str, seq->tag_name, seq->total_len);
 		if (seq->type == E_DATA && seq_has_bit_string(seq))
 			fprintf(fout, " (%li+1+%li)\n", seq->header_len, seq->data_len - 1);
+		else if (seq->tag_indefinite)
+			fprintf(fout, " (indefinite)\n");
 		else
 			fprintf(fout, " (%li+%li)\n", seq->header_len, seq->data_len);
 	}

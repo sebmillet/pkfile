@@ -78,6 +78,7 @@ typedef struct {
 	int class;
 	type_t type;
 	int number;
+	int indefinite;
 	unsigned long header_len;  /* Size of tag itself */
 	unsigned long data_len;    /* Value coded by the tag */
 } tag_t;
@@ -90,7 +91,7 @@ typedef struct tag_univ_t {
 
 static tag_univ_t univ_tags[] = {
 /*   name                 type_t          is_string */
-	{"EOC",               T_PRIM,         FALSE},
+	{"EOC",               T_PRIM,         FALSE}, /* TAG_U_EOC */
 	{"BOOLEAN",           T_PRIM,         FALSE},
 	{"INTEGER",           T_PRIM,         FALSE}, /* TAG_U_INTEGER */
 	{"BIT STRING",        T_PRIM_OR_CONS, FALSE}, /* TAG_U_BIT_STRING */
@@ -124,6 +125,7 @@ static tag_univ_t univ_tags[] = {
 	{"(long form)",       T_NA,           FALSE} /* TAG_U_LONG_FORMAT */
 };
 
+#define TAG_U_EOC               0
 #define TAG_U_INTEGER           2
 #define TAG_U_BIT_STRING        3
 #define TAG_U_OCTET_STRING      4
@@ -286,6 +288,24 @@ size_t vf_read(void *ptr, size_t size, size_t nmemb, vf_t *vf)
 	return nb_bytes;
 }
 
+	/*
+	 * Remove tail from the chain, and return the new tail
+	 * */
+static seq_t *remove_tail(pkctrl_t *ctrl)
+{
+	DBG("-- Removing one seq_t level\n")
+	seq_t *to_free = ctrl->tail;
+	if (ctrl->tail->parent != NULL)
+		ctrl->tail->parent->consumed += ctrl->tail->consumed;
+	ctrl->tail = ctrl->tail->parent;
+	seq_destruct(to_free);
+	if (ctrl->tail != NULL) {
+		ctrl->tail->child = NULL;
+		return ctrl->tail;
+	}
+	return NULL;
+}
+
 seq_t *seq_next(pkctrl_t *ctrl)
 {
 	const char *prefix = "offset %lu: ";
@@ -293,7 +313,21 @@ seq_t *seq_next(pkctrl_t *ctrl)
 
 	size_t cons = 0;
 
-	while ((ctrl->tail->data_len >= 0 && ctrl->tail->consumed >= ctrl->tail->total_len) || vf_eof(&ctrl->vf)) {
+		/*
+		 * Manage indefinite form (zero-length level terminated by EOC)
+		 * */
+	if (ctrl->tail->data_len >=0 && ctrl->tail->tag_type == T_PRIM &&
+			ctrl->tail->tag_class == TAG_CLASS_UNIVERSAL && ctrl->tail->tag_number == TAG_U_EOC) {
+		if (ctrl->tail->parent && ctrl->tail->parent->tag_indefinite) {
+			DBG("tail's parent is indefinite: EOC will close current level\n")
+			if (!remove_tail(ctrl))
+				FATAL_ERROR("tail should have a non NULL parent! something got terribly wrong here");
+			if (!remove_tail(ctrl))
+				return NULL;
+		}
+	}
+
+	while ((ctrl->tail->data_len >= 0 && ctrl->tail->consumed >= ctrl->tail->total_len && !ctrl->tail->tag_indefinite) || vf_eof(&ctrl->vf)) {
 		if (vf_eof(&ctrl->vf)) {
 			if (ctrl->tail->parent == NULL) {
 				seq_destruct(ctrl->tail);
@@ -304,19 +338,11 @@ seq_t *seq_next(pkctrl_t *ctrl)
 				goto seq_next_error;
 			}
 		}
-		DBG("-- Removing one seq_t level\n")
 		if (ctrl->tail->consumed > ctrl->tail->total_len) {
 			errmsg = "data size inside sequence exceeds sequence size";
 			goto seq_next_error;
 		}
-		seq_t *to_free = ctrl->tail;
-		if (ctrl->tail->parent != NULL)
-			ctrl->tail->parent->consumed += ctrl->tail->consumed;
-		ctrl->tail = ctrl->tail->parent;
-		seq_destruct(to_free);
-		if (ctrl->tail != NULL)
-			ctrl->tail->child = NULL;
-		else
+		if (!remove_tail(ctrl))
 			return NULL;
 	}
 	ctrl->tail->index++;
@@ -348,6 +374,7 @@ seq_t *seq_next(pkctrl_t *ctrl)
 	tag.class = (c & 0xc0) >> 6;
 	tag.type = (c & 0x20) >> 5;
 	tag.number = (c & 0x1F);
+	tag.indefinite = FALSE;
 	type_t type = univ_tags[tag.number].type;
 	if (tag.class == TAG_CLASS_UNIVERSAL && (type == T_PRIM || type == T_CONS) && tag.type != type) {
 		tag.type = T_PRIM;
@@ -411,8 +438,8 @@ seq_t *seq_next(pkctrl_t *ctrl)
 		if (n > LENGTH_MULTIBYTES_MAX_BYTES - 1) {
 			errmsg = "number of bytes to encode length exceeds maximum";
 			goto seq_next_error;
-		} else if (n == 0) {
-			errmsg = "number of bytes to encode length cannot be null";
+		} else if (n == 0 && tag.type != T_CONS) {
+			errmsg = "use of indefinite length with a primitive";
 			goto seq_next_error;
 		}
 		tag.data_len = 0;
@@ -427,6 +454,8 @@ seq_t *seq_next(pkctrl_t *ctrl)
 			tag.data_len <<= 8;
 			tag.data_len += (unsigned int)cc;
 		}
+		if (!tag.data_len)
+			tag.indefinite = TRUE;
 	}
 	DBG("Length: %lu\n", tag.data_len)
 
@@ -435,6 +464,7 @@ seq_t *seq_next(pkctrl_t *ctrl)
 	ctrl->tail->tag_class = tag.class;
 	ctrl->tail->tag_type = tag.type;
 	ctrl->tail->tag_number = tag.number;
+	ctrl->tail->tag_indefinite = tag.indefinite;
 
 	/*
 	 * I "repeat" the 'ifdef DEBUG' as short_classes definition occurs

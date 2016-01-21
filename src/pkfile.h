@@ -55,6 +55,7 @@ struct seq_t {
 	int tag_class;
 	int tag_type;
 	int tag_number;
+	int tag_indefinite;
 
 	char header[TAG_MAX_HLENGTH];
 	char *data;   /* Used with E_DATA */
