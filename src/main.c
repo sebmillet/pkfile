@@ -15,10 +15,14 @@
  * =====================================================================================
  */
 
-/*#define HAS_LIB_OPENSSL*/
+/*#define PACKAGE_NAME "pkfile"*/
+/*#define PACKAGE_STRING "pkfile 0.1"*/
 
-#define PACKAGE_NAME "pkfile"
-#define PACKAGE_STRING "pkfile 0.1"
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#else
+#include "..\extracfg.h"
+#endif
 
 #define ENV_CHARSET "PKFILE_CHARSET"
 
@@ -35,13 +39,14 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <ctype.h>
-/*#include <langinfo.h>*/
-#include <locale.h>
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
-/*#include <dos.h>*/
+#else
+#include <langinfo.h>
 #endif
+
+#include <locale.h>
 
 #ifdef HAS_LIB_OPENSSL
 #include <openssl/objects.h>
@@ -190,7 +195,11 @@ int outln_errno(int e)
 
 int my_stricmp(const char *a, const char *b)
 {
+#if defined(_WIN32) || defined(_WIN64)
 	return _stricmp(a, b);
+#else
+	return strcasecmp(a, b);
+#endif
 }
 
 char *s_strncpy(char *dest, const char *src, size_t n)
@@ -472,14 +481,14 @@ void print_tree(const seq_t *seq, const seq_t *seq_head, FILE *fout, int termina
 			}
 		}
 
-		fprintf(fout, "%s: %s, len: %i",
+		fprintf(fout, "%s: %s, len: %li",
 			seq->tag_type_str, seq->tag_name, seq->total_len);
 		if (seq->type == E_DATA && seq_has_bit_string(seq))
-			fprintf(fout, " (%i+1+%i)\n", seq->header_len, seq->data_len - 1);
+			fprintf(fout, " (%li+1+%li)\n", seq->header_len, seq->data_len - 1);
 		else if (seq->tag_indefinite)
 			fprintf(fout, " (indefinite)\n");
 		else
-			fprintf(fout, " (%i+%i)\n", seq->header_len, seq->data_len);
+			fprintf(fout, " (%li+%li)\n", seq->header_len, seq->data_len);
 	}
 
 	if (seq->type == E_DATA) {
@@ -730,9 +739,11 @@ int manage_pkdata(const unsigned char *pkdata, size_t pkdata_len, const nodes_t 
 /*
  * Inspired from tree source.
  * tree source was version 1.7.0.
- * It is tree source "inspiration" until the second 40 x '=' comment marker
+ * It is tree source inspiration until the second 40 x '=' comment marker
  */
 /* ======================================== */
+
+#if defined(_WIN32) || defined(_WIN64)
 
 /*
  * Charsets provided by Kyosuke Tokoro (NBG01720@nifty.ne.jp)
@@ -807,6 +818,9 @@ void windows_getcharset(char *s, int s_len)
 	}
 }
 
+#endif /* defined(_WIN32) || defined(_WIN64) */
+
+	/* This declaration is taken from tree.h */
 struct linedraw {
   const char **name, *vert, *vert_left, *corner;
 };
@@ -1111,13 +1125,6 @@ int main(int argc, char **argv)
 {
 const size_t STDIN_BUFSIZE = 1024;
 
-/*setlocale(LC_COLLATE, "");
-FILE *fff = stdout;
-const char *s1 = "\xC0", *s2 = "\xC0\xC4";
-	fprintf(fff, "%s \xC0\xC4 \n", "allo:");
-	fprintf(fff, " (%i+%i) \xC0\xC4\xC4\n", 0, 0);
-	exit(0);*/
-
 	unsigned char *data_in = NULL;
 	unsigned char *data_out = NULL;
 	nodes_t *nodes = NULL;
@@ -1143,10 +1150,6 @@ const char *s1 = "\xC0", *s2 = "\xC0\xC4";
 		usage();
 	}
 
-		/* Another take away from tree source */
-
-	/*setlocale(LC_ALL, "");*/
-	setlocale(LC_COLLATE, "");
 	const char *charset = NULL;
 	char buf[100];
 	const char *env;
@@ -1177,7 +1180,9 @@ const char *s1 = "\xC0", *s2 = "\xC0\xC4";
 		}
 	}
 #else
-	if (!charset && !strcmp(nl_langinfo(CODESET), "UTF-8")) {
+	setlocale(LC_ALL, "");
+	setlocale(LC_COLLATE, "");
+	if (!charset && !my_stricmp(nl_langinfo(CODESET), "UTF-8")) {
 		DBG("charset UTF-8 found by calling nl_langindo\n", ENV_CHARSET)
 		charset = "UTF-8";
 	}
