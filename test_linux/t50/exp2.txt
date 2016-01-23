@@ -1,0 +1,9 @@
+                 .
+1                ├── cons: SEQUENCE, len: 17 (2+15)
+1.1              │   ├── cons: BIT STRING, len: 2 (indefinite)
+1.1.1            │   │   ├── prim: BIT STRING, len: 5 (2+1+2)
+1.1.1.1          │   │   │         0A3B
+1.1.2            │   │   ├── prim: BIT STRING, len: 7 (2+1+4)
+1.1.2.1          │   │   │         5F291CD0  
+1.1.3            │   │   ├── prim: EOC, len: 2 (2+0)
+Error: offset 18: data size inside sequence exceeds sequence size
