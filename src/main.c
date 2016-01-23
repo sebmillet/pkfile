@@ -34,6 +34,8 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <ctype.h>
+#include <langinfo.h>
+#include <locale.h>
 
 #ifdef HAS_LIB_OPENSSL
 #include <openssl/objects.h>
@@ -43,6 +45,8 @@
 #include "common.h"
 #include "pkfile.h"
 
+	/* FIXME (remove code later) */
+#if 0
 #if defined(_WIN32) || defined(_WIN64)
 static const char *tree_strings[] = {
 	"`-- ", /* T_NORTH_EAST */
@@ -60,6 +64,8 @@ static const char *tree_strings[] = {
 	"",     /* T_EMPTY */
 };
 #endif
+#endif
+static const char *tree_strings[5];
 
 	/*
 	 * The der "SEQUENCE" or "SET OF" provide a hierarchical
@@ -86,6 +92,8 @@ char *opt_node_open = NULL;
 
 int opt_print_offset = FALSE;
 
+const char *opt_charset = NULL;
+
 int opt_flat = FALSE;
 
 typedef struct nodes_t nodes_t;
@@ -94,7 +102,9 @@ struct nodes_t {
 	nodes_t *child;
 };
 
-#define UNUSED(x) (void)(x)
+#define PASSWORD_MAX_BYTES 200
+#define STR_OID_MAX_SIZE 200
+#define NODES_STR_MAX_LEN 100
 
 	/*
 	 * Needed by FATAL_ERROR macro
@@ -235,26 +245,28 @@ ssize_t file_get_size(const char* filename)
 static void usage()
 {
 	fprintf(stderr, "Usage: %s [options] [FILE]\n", PACKAGE_NAME);
-	fprintf(stderr, "Display or extract sequences inside PKCS files.\n");
-	fprintf(stderr, "This program will automatically detect whether PEM format\n");
-	fprintf(stderr, "is being used, or DER, unless started with --inform.\n");
-	fprintf(stderr, "  -h  --help           print this usage and exit\n");
-	fprintf(stderr, "  -v  --version        print version information and exit\n");
-	fprintf(stderr, "  -V  --verbose        verbose output\n");
-	fprintf(stderr, "  -l  --level n        set max depth level to n (default: -1)\n");
-	fprintf(stderr, "                       -1 = no maximum depth level\n");
-	fprintf(stderr, "      --offset         print file offset before node numbers\n");
-	fprintf(stderr, "      --flat           print data structure without hierarchical information\n");
-	fprintf(stderr, "  -p  --password pwd   set password\n");
-	fprintf(stderr, "  -x  --extract        output binary data\n");
-	fprintf(stderr, "  -f  --inform format  set format. Either pem or der\n");
-	fprintf(stderr, "  -n  --node NODE      output only node NODE. NODE name is a sequence of\n");
-	fprintf(stderr, "                       integers separated by dots, like 1.3.1\n");
-	fprintf(stderr, "  -N  --node-open NODE for a NODE of type BIT STRING or OCTET STRING, work\n");
-	fprintf(stderr, "                       on NODE data assuming it is der-encoded.\n");
-	fprintf(stderr, "  -o  --out            output to file\n");
-	fprintf(stderr, "  --                   end of parameters, next option is file name\n");
-	fprintf(stderr, "If FILE is not specified, read standard input.\n");
+	fprintf(stderr, "Display or extract sequences inside PKCS files.\n"
+		"This program will automatically detect whether PEM format\n"
+		"is being used, or DER, unless started with --inform.\n"
+		"  -h  --help           print this usage and exit\n"
+		"  -v  --version        print version information and exit\n"
+		"  -V  --verbose        verbose output\n"
+		"  -l  --level n        set max depth level to n (default: -1)\n"
+		"                       -1 = no maximum depth level\n"
+		"      --offset         print file offset before node numbers\n"
+		"      --flat           print data structure without hierarchical information\n"
+		"  -p  --password pwd   set password to 'pwd' when source is encrypted PEM\n"
+		"  -x  --extract        output binary data\n"
+		"  -f  --inform format  set format. Either pem or der\n"
+		"  -n  --node NODE      output only node NODE. NODE name is a sequence of\n"
+		"                       integers separated by dots, like 1.3.1\n"
+		"  -N  --node-open NODE for a NODE of type BIT STRING or OCTET STRING, work\n"
+		"                       on NODE data assuming it is der-encoded.\n"
+		"  -o  --out            output to file\n"
+		"      --charset X      use 'X' as charset for tree-like display\n"
+		"  --                   end of parameters, next option is file name\n"
+		"If FILE is not specified, read standard input.\n"
+	);
 	exit(0);
 }
 
@@ -269,172 +281,10 @@ static void version()
 	printf("This is free software with ABSOLUTELY NO WARRANTY.\n");
 }
 
-static void opt_check(unsigned int n, const char *opt)
-{
-	static int defined_options[11] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-
-	assert(n < sizeof(defined_options) / sizeof(*defined_options));
-
-	if (defined_options[n]) {
-		fprintf(stderr, "Option %s already set\n", opt);
-		exit(-2);
-	} else
-		defined_options[n] = TRUE;
-}
-
-static void parse_options(int argc, char **argv)
-{
-#define OPT_WITH_VALUE_CHECK \
-if (shortopt_nb >= 1 && shortopt_i < shortopt_nb - 1) { \
-	missing_option_value = argv_a_short + 1; \
-	a = -1; \
-	break; \
-} \
-if (++a >= argc) { \
-	missing_option_value = argv[a - 1] + 1; \
-	a = -1; \
-	break; \
-}
-
-	int optset_debug = FALSE;
-
-	char *missing_option_value = NULL;
-
-	int a = 1;
-	char *argv_a_short;
-	char shortopt[3];
-	int shortopt_nb = 0;
-	int shortopt_i = -1;
-	while (a < argc) {
-		if (shortopt_nb == 0) {
-			if (strlen(argv[a]) >= 2 && argv[a][0] == '-' && argv[a][1] != '-') {
-				shortopt_nb = strlen(argv[a]) - 1;
-				shortopt_i = 0;
-			}
-		}
-		if (shortopt_nb >= 1) {
-
-			assert(shortopt_i <= shortopt_nb);
-			shortopt[0] = '-';
-			shortopt[1] = argv[a][shortopt_i + 1];
-			shortopt[2] = '\0';
-			argv_a_short = shortopt;
-		} else {
-			argv_a_short = argv[a];
-		}
-
-		if (!strcmp(argv[a], "--help") || !strcmp(argv_a_short, "-h")) {
-			usage();
-		} else if (!strcmp(argv[a], "--version") || !strcmp(argv_a_short, "-v")) {
-			version();
-			exit(0);
-		} else if (!strcmp(argv[a], "--verbose") || !strcmp(argv_a_short, "-V")) {
-			opt_check(0, argv[a]);
-			out_level = L_VERBOSE;
-		} else if (!strcmp(argv[a], "--debug") || !strcmp(argv_a_short, "-D")) {
-			opt_check(1, argv[a]);
-			optset_debug = TRUE;
-		} else if (!strcmp(argv[a], "--out") || !strcmp(argv_a_short, "-o")) {
-			opt_check(2, argv[a]);
-			OPT_WITH_VALUE_CHECK
-			opt_file_out = argv[a];
-		} else if (!strcmp(argv[a], "--password") || !strcmp(argv_a_short, "-p")) {
-			opt_check(3, argv[a]);
-			OPT_WITH_VALUE_CHECK
-			opt_password = argv[a];
-		} else if (!strcmp(argv[a], "--inform") || !strcmp(argv_a_short, "-f")) {
-			opt_check(4, argv[a]);
-			OPT_WITH_VALUE_CHECK
-			opt_inform = argv[a];
-		} else if (!strcmp(argv[a], "--level") || !strcmp(argv_a_short, "-l")) {
-			opt_check(5, argv[a]);
-			OPT_WITH_VALUE_CHECK
-			opt_max_level = atoi(argv[a]);
-		} else if (!strcmp(argv[a], "--extract") || !strcmp(argv_a_short, "-x")) {
-			opt_check(6, argv[a]);
-			opt_bin = TRUE;
-		} else if (!strcmp(argv[a], "--node") || !strcmp(argv_a_short, "-n")) {
-			opt_check(7, argv[a]);
-			OPT_WITH_VALUE_CHECK
-			opt_node = argv[a];
-		} else if (!strcmp(argv[a], "--offset")) {
-			opt_check(8, argv[a]);
-			opt_print_offset = TRUE;
-		} else if (!strcmp(argv[a], "--node-open") || !strcmp(argv_a_short, "-N")) {
-			opt_check(9, argv[a]);
-			OPT_WITH_VALUE_CHECK
-			opt_node_open = argv[a];
-		} else if (!strcmp(argv[a], "--flat")) {
-			opt_check(10, argv[a]);
-			opt_flat = TRUE;
-		} else if (argv[a][0] == '-') {
-			if (strcmp(argv[a], "--")) {
-				fprintf(stderr, "%s: invalid option -- '%s'\n", PACKAGE_NAME, argv[a]);
-				a = -1;
-				break;
-			} else {
-				++a;
-				break;
-			}
-		} else {
-			if (!opt_file_in) {
-				opt_file_in = argv[a];
-			} else {
-				fprintf(stderr, "%s: invalid argument -- '%s'\n", PACKAGE_NAME, argv[a]);
-				a = -1;
-				break;
-			}
-		}
-		if (shortopt_nb >= 1) {
-			if (++shortopt_i >= shortopt_nb)
-				shortopt_nb = 0;
-		}
-		if (shortopt_nb == 0)
-			++a;
-	}
-	if ((a >= 1 && a < argc - 1) || (a >= 1 && a == argc - 1 && opt_file_in)) {
-		fprintf(stderr, "%s: trailing options.\n", PACKAGE_NAME);
-		a = -1;
-	} else if (a >= 1 && a == argc - 1) {
-		opt_file_in = argv[a];
-	} else if (missing_option_value) {
-		fprintf(stderr, "%s: option '%s' requires one argument\n", PACKAGE_NAME, missing_option_value);
-	}
-	if (opt_inform) {
-		if (!strcmp(opt_inform, "PEM") || !strcmp(opt_inform, "pem")) {
-			assume_pem = TRUE;
-
-#ifndef HAS_LIB_OPENSSL
-			fprintf(stderr, "%s: this version does not support PEM format\n", PACKAGE_NAME);
-			exit(-9);
-#endif
-
-		} else if (!strcmp(opt_inform, "DER") || !strcmp(opt_inform, "der")) {
-			assume_der = TRUE;
-		} else {
-			fprintf(stderr, "%s: unknown input format, allowed values are pem and der\n", PACKAGE_NAME);
-			a = -1;
-		}
-	}
-
-	if (a < 0)
-		usage();
-
-#ifndef HAS_LIB_OPENSSL
-	assume_der = TRUE;
-#endif
-
-	if (optset_debug)
-		out_level = L_DEBUG;
-}
-
 #ifdef HAS_LIB_OPENSSL
 
 char *cb_password_pre()
 {
-/* FIXME */
-#define PASSWORD_MAX_BYTES 200
-
 	char *password;
 
 	if (!opt_password) {
@@ -551,8 +401,6 @@ int decode_oid(char *p, const size_t plen, const char *buf, const size_t buflen)
 
 void print_oid(const char *header, ssize_t header_len, const char *data, ssize_t data_len, FILE *fout)
 {
-/* FIXME */
-#define STR_OID_MAX_SIZE 200
 	char str_oid[STR_OID_MAX_SIZE];
 
 #ifdef HAS_LIB_OPENSSL
@@ -602,9 +450,6 @@ void node2str(char *buf, size_t buf_len, const seq_t *seq_head, int is_data)
 
 void print_tree(const seq_t *seq, const seq_t *seq_head, FILE *fout, int terminal, int *callctrl)
 {
-/* FIXME */
-#define NODES_STR_MAX_LEN 100
-
 	if (opt_max_level >= 0 && seq->level > opt_max_level) return;
 
 	if (!terminal) {
@@ -890,6 +735,384 @@ int manage_pkdata(const unsigned char *pkdata, size_t pkdata_len, const nodes_t 
 	return r;
 }
 
+/*
+ * Taken almost "as is" from tree source.
+ *
+ *   The differences are indents, text presentation, use of snprintf instead
+ *   of sprintf, use of arguments and return value instead of working
+ *   on global variables. Also the constant strings have an appended space
+ *   character.
+ *   The definition of struct linedraw got copied here instead of
+ *   using tree.h.
+ *   Also '&middot;' in latin1_3 and iso8859_789 has been replaced
+ *   with '`' character.
+ *
+ * tree source is version 1.7.0.
+ * It is tree source until the second 40 x '=' comment marker
+ */
+/* ======================================== */
+
+/*
+ * Charsets provided by Kyosuke Tokoro (NBG01720@nifty.ne.jp)
+ */
+const char *getcharset(void)
+{
+#ifndef __EMX__
+	return getenv("PKFILE_CHARSET");
+#else
+	static char buffer[13];
+	ULONG aulCpList[3], ulListSize, codepage = 0;
+	char *charset = getenv("PKFILE_CHARSET");
+	if (charset)
+		return charset;
+
+	if (!getenv("WINDOWID"))
+		if (!DosQueryCp(sizeof(aulCpList), aulCpList, &ulListSize))
+			if (ulListSize >= sizeof(*aulCpList))
+				codepage = *aulCpList;
+
+	switch (codepage) {
+		case 437: case 775: case 850: case 851: case 852: case 855:
+		case 857: case 860: case 861: case 862: case 863: case 864:
+		case 865: case 866: case 868: case 869: case 891: case 903:
+		case 904:
+			snprintf(buffer, sizeof(buffer), "IBM%03lu", codepage);
+			break;
+		case 367:
+			return "US-ASCII";
+		case 813:
+			return "ISO-8859-7";
+		case 819:
+			return "ISO-8859-1";
+		case 881: case 882: case 883: case 884: case 885:
+			snprintf(buffer, sizeof(buffer), "ISO-8859-%lu", codepage - 880);
+			break;
+		case 858: case 924:
+			snprintf(buffer, sizeof(buffer), "IBM%05lu", codepage);
+			break;
+		case 874:
+			return "TIS-620";
+		case 897: case 932: case 942: case 943:
+			return "Shift_JIS";
+		case 912:
+			return "ISO-8859-2";
+		case 915:
+			return "ISO-8859-5";
+		case 916:
+			return "ISO-8859-8";
+		case 949: case 970:
+			return "EUC-KR";
+		case 950:
+			return "Big5";
+		case 954:
+			return "EUC-JP";
+		case 1051:
+			return "hp-roman8";
+		case 1089:
+			return "ISO-8859-6";
+		case 1250: case 1251: case 1253: case 1254: case 1255: case 1256:
+		case 1257: case 1258:
+			snprintf(buffer, sizeof(buffer), "windows-%lu", codepage);
+			break;
+		case 1252:
+			return "ISO-8859-1-Windows-3.1-Latin-1";
+		default:
+			return NULL;
+	}
+#endif
+}
+
+struct linedraw {
+  const char **name, *vert, *vert_left, *corner;
+};
+
+const struct linedraw *initlinedraw(const char *charset, int flag)
+{
+	static const char *latin1_3[] = {
+		"ISO-8859-1", "ISO-8859-1:1987", "ISO_8859-1", "latin1", "l1", "IBM819",
+		"CP819", "csISOLatin1", "ISO-8859-3", "ISO_8859-3:1988", "ISO_8859-3",
+		"latin3", "ls", "csISOLatin3", NULL
+	};
+
+	static const char *iso8859_789[] = {
+		"ISO-8859-7", "ISO_8859-7:1987", "ISO_8859-7", "ELOT_928", "ECMA-118",
+		"greek", "greek8", "csISOLatinGreek", "ISO-8859-8", "ISO_8859-8:1988",
+		"iso-ir-138", "ISO_8859-8", "hebrew", "csISOLatinHebrew", "ISO-8859-9",
+		"ISO_8859-9:1989", "iso-ir-148", "ISO_8859-9", "latin5", "l5",
+		"csISOLatin5", NULL
+	};
+
+	static const char *shift_jis[] = {
+		"Shift_JIS", "MS_Kanji", "csShiftJIS", NULL
+	};
+
+	static const char *euc_jp[] = {
+		"EUC-JP", "Extended_UNIX_Code_Packed_Format_for_Japanese",
+		"csEUCPkdFmtJapanese", NULL
+	};
+
+	static const char *euc_kr[] = {
+		"EUC-KR", "csEUCKR", NULL
+	};
+
+	static const char *iso2022jp[] = {
+		"ISO-2022-JP", "csISO2022JP", "ISO-2022-JP-2", "csISO2022JP2", NULL
+	};
+
+	static const char *ibm_pc[] = {
+		"IBM437", "cp437", "437", "csPC8CodePage437", "IBM852", "cp852", "852",
+		"csPCp852", "IBM863", "cp863", "863", "csIBM863", "IBM855", "cp855",
+		"855", "csIBM855", "IBM865", "cp865", "865", "csIBM865", "IBM866",
+		"cp866", "866", "csIBM866", NULL
+	};
+
+	static const char *ibm_ps2[] = {
+		"IBM850", "cp850", "850", "csPC850Multilingual", "IBM00858", "CCSID00858",
+		"CP00858", "PC-Multilingual-850+euro", NULL
+	};
+
+	static const char *ibm_gr[] = {
+		"IBM869", "cp869", "869", "cp-gr", "csIBM869", NULL
+	};
+
+	static const char *gb[] = {
+		"GB2312", "csGB2312", NULL
+	};
+
+	static const char *utf8[] = {
+		"UTF-8", "utf8", NULL
+	};
+
+	static const char *big5[] = {
+		"Big5", "csBig5", NULL
+	};
+
+	static const char *viscii[] = {
+		"VISCII", "csVISCII", NULL
+	};
+
+	static const char *koi8ru[] = {
+		"KOI8-R", "csKOI8R", "KOI8-U", NULL
+	};
+
+	static const char *windows[] = {
+		"ISO-8859-1-Windows-3.1-Latin-1", "csWindows31Latin1",
+		"ISO-8859-2-Windows-Latin-2", "csWindows31Latin2", "windows-1250",
+		"windows-1251", "windows-1253", "windows-1254", "windows-1255",
+		"windows-1256", "windows-1256", "windows-1257", NULL
+	};
+
+	static const struct linedraw cstable[]={
+		{latin1_3,    "|   ",              "|-- ",            "`-- "    },
+		{iso8859_789, "|   ",              "|-- ",            "`-- "    },
+		{shift_jis,   "\204\240  ",        "\204\245 ",       "\204\244 ",     },
+		{euc_jp,      "\250\242  ",        "\250\247 ",       "\250\246 ",     },
+		{euc_kr,      "\246\242  ",        "\246\247 ",       "\246\246 ",     },
+		{iso2022jp,   "\033$B(\"\033(B  ", "\033$B('\033(B ", "\033$B(&\033(B "},
+		{ibm_pc,      "\263   ",           "\303\304\304 ",   "\300\304\304 "  },
+		{ibm_ps2,     "\263   ",           "\303\304\304 ",   "\300\304\304 "  },
+		{ibm_gr,      "\263   ",           "\303\304\304 ",   "\300\304\304 "  },
+		{gb,          "\251\246  ",        "\251\300 ",       "\251\270 "      },
+		{utf8,        "\342\224\202   ",
+		"\342\224\234\342\224\200\342\224\200 ", "\342\224\224\342\224\200\342\224\200 "},
+		{big5,        "\242x  ",           "\242u ",          "\242| "         },
+		{viscii,      "|   ",              "|-- ",            "`-- "           },
+		{koi8ru,      "\201   ",           "\206\200\200 ",   "\204\200\200 "  },
+		{windows,     "|   ",              "|-- ",            "`-- "           },
+		{NULL,        "|   ",              "|-- ",            "`-- "           }
+	};
+
+	const struct linedraw *linedraw;
+	const char**s;
+	if (flag) {
+		fprintf(stderr,"Valid charsets include:\n");
+		for (linedraw = cstable; linedraw->name; ++linedraw)
+			for (s = linedraw->name; *s; ++s)
+				fprintf(stderr,"  %s\n", *s);
+		return NULL;
+	}
+
+	if (charset) {
+		for (linedraw = cstable; linedraw->name; ++linedraw)
+			for (s = linedraw->name; *s; ++s)
+				if (!strcasecmp(charset, *s)) return linedraw;
+	}
+	return cstable + sizeof(cstable) / sizeof(*cstable)-1;
+}
+
+/* ======================================== */
+/*
+ * End of tree source take away...
+ */
+
+
+static void opt_check(unsigned int n, const char *opt)
+{
+	static int defined_options[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+	assert(n < sizeof(defined_options) / sizeof(*defined_options));
+
+	if (defined_options[n]) {
+		fprintf(stderr, "Option %s already set\n", opt);
+		exit(-2);
+	} else
+		defined_options[n] = TRUE;
+}
+
+static void parse_options(int argc, char **argv)
+{
+#define OPT_WITH_VALUE_CHECK \
+if (shortopt_nb >= 1 && shortopt_i < shortopt_nb - 1) { \
+	missing_option = argv_a_short + 1; \
+	a = -1; \
+	break; \
+} \
+if (++a >= argc) { \
+	missing_option = argv[a - 1] + 2; \
+	a = -1; \
+	break; \
+}
+
+	int optset_debug = FALSE;
+
+	char *missing_option = NULL;
+
+	int a = 1;
+	char *argv_a_short;
+	char shortopt[3];
+	int shortopt_nb = 0;
+	int shortopt_i = -1;
+	while (a < argc) {
+		if (shortopt_nb == 0) {
+			if (strlen(argv[a]) >= 2 && argv[a][0] == '-' && argv[a][1] != '-') {
+				shortopt_nb = strlen(argv[a]) - 1;
+				shortopt_i = 0;
+			}
+		}
+		if (shortopt_nb >= 1) {
+
+			assert(shortopt_i <= shortopt_nb);
+			shortopt[0] = '-';
+			shortopt[1] = argv[a][shortopt_i + 1];
+			shortopt[2] = '\0';
+			argv_a_short = shortopt;
+		} else {
+			argv_a_short = argv[a];
+		}
+
+		if (!strcmp(argv[a], "--help") || !strcmp(argv_a_short, "-h")) {
+			usage();
+		} else if (!strcmp(argv[a], "--version") || !strcmp(argv_a_short, "-v")) {
+			version();
+			exit(0);
+		} else if (!strcmp(argv[a], "--verbose") || !strcmp(argv_a_short, "-V")) {
+			opt_check(0, argv[a]);
+			out_level = L_VERBOSE;
+		} else if (!strcmp(argv[a], "--debug") || !strcmp(argv_a_short, "-D")) {
+			opt_check(1, argv[a]);
+			optset_debug = TRUE;
+		} else if (!strcmp(argv[a], "--out") || !strcmp(argv_a_short, "-o")) {
+			opt_check(2, argv[a]);
+			OPT_WITH_VALUE_CHECK
+			opt_file_out = argv[a];
+		} else if (!strcmp(argv[a], "--password") || !strcmp(argv_a_short, "-p")) {
+			opt_check(3, argv[a]);
+			OPT_WITH_VALUE_CHECK
+			opt_password = argv[a];
+		} else if (!strcmp(argv[a], "--inform") || !strcmp(argv_a_short, "-f")) {
+			opt_check(4, argv[a]);
+			OPT_WITH_VALUE_CHECK
+			opt_inform = argv[a];
+		} else if (!strcmp(argv[a], "--level") || !strcmp(argv_a_short, "-l")) {
+			opt_check(5, argv[a]);
+			OPT_WITH_VALUE_CHECK
+			opt_max_level = atoi(argv[a]);
+		} else if (!strcmp(argv[a], "--extract") || !strcmp(argv_a_short, "-x")) {
+			opt_check(6, argv[a]);
+			opt_bin = TRUE;
+		} else if (!strcmp(argv[a], "--node") || !strcmp(argv_a_short, "-n")) {
+			opt_check(7, argv[a]);
+			OPT_WITH_VALUE_CHECK
+			opt_node = argv[a];
+		} else if (!strcmp(argv[a], "--offset")) {
+			opt_check(8, argv[a]);
+			opt_print_offset = TRUE;
+		} else if (!strcmp(argv[a], "--node-open") || !strcmp(argv_a_short, "-N")) {
+			opt_check(9, argv[a]);
+			OPT_WITH_VALUE_CHECK
+			opt_node_open = argv[a];
+		} else if (!strcmp(argv[a], "--flat")) {
+			opt_check(10, argv[a]);
+			opt_flat = TRUE;
+		} else if (!strcmp(argv[a], "--charset")) {
+			opt_check(11, argv[a]);
+			OPT_WITH_VALUE_CHECK
+			opt_charset = argv[a];
+		} else if (argv[a][0] == '-') {
+			if (strcmp(argv[a], "--")) {
+				fprintf(stderr, "%s: invalid option -- '%s'\n", PACKAGE_NAME, argv[a]);
+				a = -1;
+				break;
+			} else {
+				++a;
+				break;
+			}
+		} else {
+			if (!opt_file_in) {
+				opt_file_in = argv[a];
+			} else {
+				fprintf(stderr, "%s: invalid argument -- '%s'\n", PACKAGE_NAME, argv[a]);
+				a = -1;
+				break;
+			}
+		}
+		if (shortopt_nb >= 1) {
+			if (++shortopt_i >= shortopt_nb)
+				shortopt_nb = 0;
+		}
+		if (shortopt_nb == 0)
+			++a;
+	}
+	if ((a >= 1 && a < argc - 1) || (a >= 1 && a == argc - 1 && opt_file_in)) {
+		fprintf(stderr, "%s: trailing options.\n", PACKAGE_NAME);
+		a = -1;
+	} else if (a >= 1 && a == argc - 1) {
+		opt_file_in = argv[a];
+	} else if (missing_option) {
+		fprintf(stderr, "%s: option '%s' requires one argument\n", PACKAGE_NAME, missing_option);
+		if (!strcmp(missing_option, "charset")) {
+			initlinedraw(NULL, 1);
+			exit(1);
+		}
+	}
+	if (opt_inform) {
+		if (!strcmp(opt_inform, "PEM") || !strcmp(opt_inform, "pem")) {
+			assume_pem = TRUE;
+
+#ifndef HAS_LIB_OPENSSL
+			fprintf(stderr, "%s: this version does not support PEM format\n", PACKAGE_NAME);
+			exit(-9);
+#endif
+
+		} else if (!strcmp(opt_inform, "DER") || !strcmp(opt_inform, "der")) {
+			assume_der = TRUE;
+		} else {
+			fprintf(stderr, "%s: unknown input format, allowed values are pem and der\n", PACKAGE_NAME);
+			a = -1;
+		}
+	}
+
+	if (a < 0)
+		usage();
+
+#ifndef HAS_LIB_OPENSSL
+	assume_der = TRUE;
+#endif
+
+	if (optset_debug)
+		out_level = L_DEBUG;
+}
+
 int main(int argc, char **argv)
 {
 const size_t STDIN_BUFSIZE = 1024;
@@ -918,6 +1141,24 @@ const size_t STDIN_BUFSIZE = 1024;
 		outln_error("--offset cannot be used with option -b");
 		usage();
 	}
+
+		/* Another take away from tree source */
+
+	setlocale(LC_CTYPE, "");
+	setlocale(LC_COLLATE, "");
+	const char *charset = (opt_charset ? opt_charset : getcharset());
+	if (charset == NULL && strcmp(nl_langinfo(CODESET), "UTF-8") == 0) {
+		charset = "UTF-8";
+	}
+
+	DBG("charset = %s\n", charset)
+	const struct linedraw *linedraw = initlinedraw(charset, 0);
+	tree_strings[T_NORTH_EAST] = linedraw->corner;
+	tree_strings[T_BLANK] = "    ";
+	tree_strings[T_NORTH_SOUTH_EAST] = linedraw->vert;
+	tree_strings[T_NORTH_SOUTH_EAST] = linedraw->vert_left;
+	tree_strings[T_NORTH_SOUTH] = linedraw->vert;
+	tree_strings[T_EMPTY] = "";
 
 	ssize_t size;
 	if (!opt_file_in) {

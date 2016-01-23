@@ -9,6 +9,7 @@ Contents:
      II. WHY PKFILE?
     III. LICENCE
      IV. COMPILATION AND INSTALLATION
+      V. CREDITS
 
 
 
@@ -159,5 +160,12 @@ To compile under Windows with mingw, in the extracted archive root, execute:
 You may need to update makefile.mingw depending on where you built openssl lib
 in.
 
-Sébastien Millet, February 2015-January 2016
+
+
+V.    CREDITS
+
+The code to detect charset and print the tree elements has been taken from
+tree source, version 1.7.0.
+The "TREE COMMAND FOR LINUX HOMEPAGE" is here:
+    http://mama.indstate.edu/users/ice/tree
 

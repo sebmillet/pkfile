@@ -162,6 +162,7 @@ static seq_t *seq_construct_and_attach_to_chain(seq_t *parent)
 		seq->parent->child = seq;
 	}
 	seq->offset = 0;
+	seq->tag_indefinite = FALSE;
 	DBG("++ Adding one seq_t level, current level = %d\n", seq->level)
 	return seq;
 }
@@ -316,9 +317,9 @@ seq_t *seq_next(pkctrl_t *ctrl)
 		/*
 		 * Manage indefinite form (zero-length level terminated by EOC)
 		 * */
-	if (ctrl->tail->data_len >=0 && ctrl->tail->tag_type == T_PRIM &&
-			ctrl->tail->tag_class == TAG_CLASS_UNIVERSAL && ctrl->tail->tag_number == TAG_U_EOC) {
-		if (ctrl->tail->parent && ctrl->tail->parent->tag_indefinite) {
+	if (ctrl->tail->parent && ctrl->tail->parent->tag_indefinite) {
+		if (ctrl->tail->data_len >=0 && ctrl->tail->tag_type == T_PRIM &&
+				ctrl->tail->tag_class == TAG_CLASS_UNIVERSAL && ctrl->tail->tag_number == TAG_U_EOC) {
 			DBG("tail's parent is indefinite: EOC will close current level\n")
 			if (!remove_tail(ctrl))
 				FATAL_ERROR("tail should have a non NULL parent! something got terribly wrong here");
