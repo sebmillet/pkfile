@@ -21,6 +21,8 @@
 #define PACKAGE_NAME "pkfile"
 #define PACKAGE_STRING "pkfile 0.1"
 
+#define ENV_CHARSET "PKFILE_CHARSET"
+
 #include <stdio.h>
 
 #ifndef _MSC_VER
@@ -34,8 +36,13 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <ctype.h>
-#include <langinfo.h>
+/*#include <langinfo.h>*/
 #include <locale.h>
+
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+/*#include <dos.h>*/
+#endif
 
 #ifdef HAS_LIB_OPENSSL
 #include <openssl/objects.h>
@@ -480,14 +487,14 @@ void print_tree(const seq_t *seq, const seq_t *seq_head, FILE *fout, int termina
 			}
 		}
 
-		fprintf(fout, "%s: %s, len: %li",
+		fprintf(fout, "%s: %s, len: %i",
 			seq->tag_type_str, seq->tag_name, seq->total_len);
 		if (seq->type == E_DATA && seq_has_bit_string(seq))
-			fprintf(fout, " (%li+1+%li)\n", seq->header_len, seq->data_len - 1);
+			fprintf(fout, " (%i+1+%i)\n", seq->header_len, seq->data_len - 1);
 		else if (seq->tag_indefinite)
 			fprintf(fout, " (indefinite)\n");
 		else
-			fprintf(fout, " (%li+%li)\n", seq->header_len, seq->data_len);
+			fprintf(fout, " (%i+%i)\n", seq->header_len, seq->data_len);
 	}
 
 	if (seq->type == E_DATA) {
@@ -736,90 +743,83 @@ int manage_pkdata(const unsigned char *pkdata, size_t pkdata_len, const nodes_t 
 }
 
 /*
- * Taken almost "as is" from tree source.
- *
- *   The differences are indents, text presentation, use of snprintf instead
- *   of sprintf, use of arguments and return value instead of working
- *   on global variables. Also the constant strings have an appended space
- *   character.
- *   The definition of struct linedraw got copied here instead of
- *   using tree.h.
- *   Also '&middot;' in latin1_3 and iso8859_789 has been replaced
- *   with '`' character.
- *
- * tree source is version 1.7.0.
- * It is tree source until the second 40 x '=' comment marker
+ * Inspired from tree source.
+ * tree source was version 1.7.0.
+ * It is tree source "inspiration" until the second 40 x '=' comment marker
  */
 /* ======================================== */
 
 /*
  * Charsets provided by Kyosuke Tokoro (NBG01720@nifty.ne.jp)
  */
-const char *getcharset(void)
+void windows_getcharset(char *s, int s_len)
 {
-#ifndef __EMX__
-	return getenv("PKFILE_CHARSET");
-#else
-	static char buffer[13];
-	ULONG aulCpList[3], ulListSize, codepage = 0;
-	char *charset = getenv("PKFILE_CHARSET");
-	if (charset)
-		return charset;
+	ULONG codepage = GetConsoleOutputCP();
 
-	if (!getenv("WINDOWID"))
-		if (!DosQueryCp(sizeof(aulCpList), aulCpList, &ulListSize))
-			if (ulListSize >= sizeof(*aulCpList))
-				codepage = *aulCpList;
+	DBG("codepage according to GetConsoleOutputCP(): %d\n", codepage)
 
 	switch (codepage) {
 		case 437: case 775: case 850: case 851: case 852: case 855:
 		case 857: case 860: case 861: case 862: case 863: case 864:
 		case 865: case 866: case 868: case 869: case 891: case 903:
 		case 904:
-			snprintf(buffer, sizeof(buffer), "IBM%03lu", codepage);
+			snprintf(s, s_len, "IBM%03lu", codepage);
 			break;
 		case 367:
-			return "US-ASCII";
+			s_strncpy(s, "US-ASCII", s_len);
+			break;
 		case 813:
-			return "ISO-8859-7";
+			s_strncpy(s, "ISO-8859-7", s_len);
+			break;
 		case 819:
-			return "ISO-8859-1";
+			s_strncpy(s, "ISO-8859-1", s_len);
+			break;
 		case 881: case 882: case 883: case 884: case 885:
-			snprintf(buffer, sizeof(buffer), "ISO-8859-%lu", codepage - 880);
+			snprintf(s, s_len, "ISO-8859-%lu", codepage - 880);
 			break;
 		case 858: case 924:
-			snprintf(buffer, sizeof(buffer), "IBM%05lu", codepage);
+			snprintf(s, s_len, "IBM%05lu", codepage);
 			break;
 		case 874:
-			return "TIS-620";
+			s_strncpy(s, "TIS-620", s_len);
+			break;
 		case 897: case 932: case 942: case 943:
-			return "Shift_JIS";
+			s_strncpy(s, "Shift_JIS", s_len);
+			break;
 		case 912:
-			return "ISO-8859-2";
+			s_strncpy(s, "ISO-8859-2", s_len);
+			break;
 		case 915:
-			return "ISO-8859-5";
+			s_strncpy(s, "ISO-8859-5", s_len);
+			break;
 		case 916:
-			return "ISO-8859-8";
+			s_strncpy(s, "ISO-8859-8", s_len);
+			break;
 		case 949: case 970:
-			return "EUC-KR";
+			s_strncpy(s, "EUC-KR", s_len);
+			break;
 		case 950:
-			return "Big5";
+			s_strncpy(s, "Big5", s_len);
+			break;
 		case 954:
-			return "EUC-JP";
+			s_strncpy(s, "EUC-JP", s_len);
+			break;
 		case 1051:
-			return "hp-roman8";
+			s_strncpy(s, "hp-roman8", s_len);
+			break;
 		case 1089:
-			return "ISO-8859-6";
+			s_strncpy(s, "ISO-8859-6", s_len);
+			break;
 		case 1250: case 1251: case 1253: case 1254: case 1255: case 1256:
 		case 1257: case 1258:
-			snprintf(buffer, sizeof(buffer), "windows-%lu", codepage);
+			snprintf(s, s_len, "windows-%lu", codepage);
 			break;
 		case 1252:
-			return "ISO-8859-1-Windows-3.1-Latin-1";
+			s_strncpy(s, "ISO-8859-1-Windows-3.1-Latin-1", s_len);
+			break;
 		default:
-			return NULL;
+			s_strncpy(s, "", s_len);
 	}
-#endif
 }
 
 struct linedraw {
@@ -910,7 +910,8 @@ const struct linedraw *initlinedraw(const char *charset, int flag)
 		{euc_kr,      "\246\242  ",        "\246\247 ",       "\246\246 ",     },
 		{iso2022jp,   "\033$B(\"\033(B  ", "\033$B('\033(B ", "\033$B(&\033(B "},
 		{ibm_pc,      "\263   ",           "\303\304\304 ",   "\300\304\304 "  },
-		{ibm_ps2,     "\263   ",           "\303\304\304 ",   "\300\304\304 "  },
+		/*{ibm_ps2,     "\263   ",           "\303\304\304 ",   "\300\304\304 "  },*/
+		{ibm_ps2,     "\xB3   ",           "\xC3\xC4\xC4 ",   "\xC0\xC4\xC4 "  },
 		{ibm_gr,      "\263   ",           "\303\304\304 ",   "\300\304\304 "  },
 		{gb,          "\251\246  ",        "\251\300 ",       "\251\270 "      },
 		{utf8,        "\342\224\202   ",
@@ -933,10 +934,18 @@ const struct linedraw *initlinedraw(const char *charset, int flag)
 	}
 
 	if (charset) {
-		for (linedraw = cstable; linedraw->name; ++linedraw)
-			for (s = linedraw->name; *s; ++s)
-				if (!strcasecmp(charset, *s)) return linedraw;
+		int i = 0;
+		for (linedraw = cstable; linedraw->name; ++linedraw) {
+			for (s = linedraw->name; *s; ++s) {
+				if (!stricmp(charset, *s)) {
+					DBG("found charset in cstable[], index %d, name %s\n", i, linedraw->name[0])
+					return linedraw;
+				}
+			}
+			++i;
+		}
 	}
+	DBG("charset not found in cstable[], returning default\n")
 	return cstable + sizeof(cstable) / sizeof(*cstable)-1;
 }
 
@@ -1117,6 +1126,13 @@ int main(int argc, char **argv)
 {
 const size_t STDIN_BUFSIZE = 1024;
 
+/*setlocale(LC_COLLATE, "");
+FILE *fff = stdout;
+const char *s1 = "\xC0", *s2 = "\xC0\xC4";
+	fprintf(fff, "%s \xC0\xC4 \n", "allo:");
+	fprintf(fff, " (%i+%i) \xC0\xC4\xC4\n", 0, 0);
+	exit(0);*/
+
 	unsigned char *data_in = NULL;
 	unsigned char *data_out = NULL;
 	nodes_t *nodes = NULL;
@@ -1144,14 +1160,46 @@ const size_t STDIN_BUFSIZE = 1024;
 
 		/* Another take away from tree source */
 
-	setlocale(LC_CTYPE, "");
+	/*setlocale(LC_ALL, "");*/
 	setlocale(LC_COLLATE, "");
-	const char *charset = (opt_charset ? opt_charset : getcharset());
-	if (charset == NULL && strcmp(nl_langinfo(CODESET), "UTF-8") == 0) {
-		charset = "UTF-8";
+	const char *charset = NULL;
+	char buf[100];
+	const char *env;
+
+	if (opt_charset) {
+		DBG("charset defined in command-line options\n")
+		charset = opt_charset;
+	}
+	if (!charset) {
+		env = getenv(ENV_CHARSET);
+		if (env) {
+			DBG("charset defined in environment variable %s\n", ENV_CHARSET)
+			s_strncpy(buf, env, sizeof(buf));
+			if (buf[strlen(buf) - 1] == '"')
+				buf[strlen(buf) - 1] = '\0';
+			charset = buf;
+			if (charset[0] == '"')
+				++charset;
+		}
 	}
 
+#if defined(_WIN32) || defined(_WIN64)
+	if (!charset) {
+		windows_getcharset(buf, sizeof(buf));
+		if (strlen(buf)) {
+			DBG("charset found with windows_getcharset() function\n", ENV_CHARSET)
+			charset = buf;
+		}
+	}
+#else
+	if (!charset && !strcmp(nl_langinfo(CODESET), "UTF-8")) {
+		DBG("charset UTF-8 found by calling nl_langindo\n", ENV_CHARSET)
+		charset = "UTF-8";
+	}
+#endif
+
 	DBG("charset = %s\n", charset)
+
 	const struct linedraw *linedraw = initlinedraw(charset, 0);
 	tree_strings[T_NORTH_EAST] = linedraw->corner;
 	tree_strings[T_BLANK] = "    ";

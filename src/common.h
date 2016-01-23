@@ -52,8 +52,7 @@ int dbg_core(const char *filename, int line, const char *fmt, ...);
 #define DBG(...) \
 	dbg_core(__FILE__, __LINE__, __VA_ARGS__);
 #else
-#define DBG(...) \
-	dbg_core(__FILE__, __LINE__, __VA_ARGS__);
+#define DBG(...)
 #endif
 
 char *s_strncpy(char *dest, const char *src, size_t n);
