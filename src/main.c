@@ -16,7 +16,6 @@
  */
 
 /*#define HAS_LIB_OPENSSL*/
-/*#define VSAFE*/
 
 #define PACKAGE_NAME "pkfile"
 #define PACKAGE_STRING "pkfile 0.1"
@@ -45,26 +44,7 @@
 #include "common.h"
 #include "pkfile.h"
 
-	/* FIXME (remove code later) */
-#if 0
-#if defined(_WIN32) || defined(_WIN64)
-static const char *tree_strings[] = {
-	"`-- ", /* T_NORTH_EAST */
-	"    ", /* T_BLANK */
-	"+-- ", /* T_NORTH_SOUTH_EAST */
-	"|   ", /* T_NORTH_SOUTH */
-	"",     /* T_EMPTY */
-};
-#else
-static const char *tree_strings[] = {
-	"└── ", /* T_NORTH_EAST */
-	"    ", /* T_BLANK */
-	"├── ", /* T_NORTH_SOUTH_EAST */
-	"│   ", /* T_NORTH_SOUTH */
-	"",     /* T_EMPTY */
-};
-#endif
-#endif
+	/* Enumerated with tree_t constants, defined in pkfile.h */
 static const char *tree_strings[5];
 
 	/*
