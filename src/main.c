@@ -208,6 +208,11 @@ int outln_errno(int e)
 	return outln_error("%s", strerror(e));
 }
 
+int my_stricmp(const char *a, const char *b)
+{
+	return _stricmp(a, b);
+}
+
 char *s_strncpy(char *dest, const char *src, size_t n)
 {
 		strncpy(dest, src, n);
@@ -937,7 +942,7 @@ const struct linedraw *initlinedraw(const char *charset, int flag)
 		int i = 0;
 		for (linedraw = cstable; linedraw->name; ++linedraw) {
 			for (s = linedraw->name; *s; ++s) {
-				if (!stricmp(charset, *s)) {
+				if (!my_stricmp(charset, *s)) {
 					DBG("found charset in cstable[], index %d, name %s\n", i, linedraw->name[0])
 					return linedraw;
 				}
