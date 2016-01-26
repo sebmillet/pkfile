@@ -1,6 +1,6 @@
 # Makefile.am
 
-SUBDIRS = src
+SUBDIRS = src doc
 ACLOCAL_AMFLAGS = -I admin
 
 dist_doc_DATA=README

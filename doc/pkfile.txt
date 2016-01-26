@@ -1,0 +1,98 @@
+pkfile(1)		    General Commands Manual		     pkfile(1)
+
+
+
+NAME
+       pkfile - a program to display and work on PKCS files.
+
+
+SYNOPSIS
+       pkfile [OPTIONS]... [FILE]
+
+
+DESCRIPTION
+       pkfile  displays or extracts the content of DER encoded data. When dis‐
+       playing it, it is in a hierarchical, tree-like way. DER stands for Dis‐
+       tinguished  Encoding  Rules.  There  is	a page on Wikipedia to have an
+       overview of DER, see https://en.wikipedia.org/wiki/X.690#DER_encoding
+
+       Otherwise the detailed specifications of DER encoding are here:
+	      http://www.itu.int/ITU-T/studygroups/com17/lan‐
+	      guages/X.690-0207.pdf
+
+       pkfile can read PEM encoded files and can also decrypt it as needed.
+	      pkfile  will detect the encoding used and manage input as appro‐
+	      priate, unless option -f is used.
+
+OPTIONS
+       If FILE is not specified, read the standard input.
+
+       -v --version
+	      Display version information and exit.
+
+       -V, --verbose
+	      Be more talkative.
+
+       -l, --level n
+	      Limit hierarchical display to depth n.
+
+       --offset
+	      Display file offset in output,  before  each  sequence  or  data
+	      block.
+
+       --flat Display content without tree-like hierarchical structure.
+
+       -p, --password pwd
+	      Set password to pwd when decrypting a PEM encoded input.
+
+       -x, --extract
+	      Instead  of displaying input content, output the binary content.
+	      If used with PEM encoded inputs, it turns pkfile into a  PEM  to
+	      DER  converter.  If used along with option -n, it will extract a
+	      sub-part of input.
+
+       -f, --inform pem|der
+	      Enforce (instead of auto-detection) the input format. Either pem
+	      or der.
+
+       -n, --node node
+	      Display (or extract with option -x) only the node n. In the reg‐
+	      ular output (without -x option), nodes are displayed before each
+	      sequence	or  block of data. They are made of integers separated
+	      by a dot, as in 1.3.1
+
+       -N, --node-open node
+	      Take the data content of node as the DER encoded input to parse.
+	      See description of option -n for the node format.
+
+       -o, --out file
+	      Output to file instead of standard output.
+
+       --charset charset
+	      For  hierarchical  display,  assume charset to display tree ele‐
+	      ments (vertical or horizontal bar and the like). This option  is
+	      managed exactly as the one of the tree program.
+
+       --     End of options, the next option is a file.
+
+INITIALIZATION FILES
+       None.
+
+ENVIRONMENT VARIABLES
+       The following environment variable is processed by pkfile:
+
+       PKFILE_CHARSET
+	      Like --charset option.
+
+AUTHOR
+       Written by Sébastien Millet <milletseb@laposte.net>.
+
+ACKNOWLEDGEMENTS
+       tree   The  characters  output  to display a hierarchical structure are
+	      tuned depending on the charset. The code managing it got	copied
+	      from tree source, with a few updates.
+
+
+
+
+January 2016			  version 0.1			     pkfile(1)

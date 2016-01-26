@@ -9,6 +9,8 @@ AC_CONFIG_HEADERS([config.h])
 
 AM_INIT_AUTOMAKE([subdir-objects])
 
+AM_MAINTAINER_MODE
+
 # Checks for programs.
 AC_PROG_CC
 AC_PROG_MAKE_SET
@@ -25,6 +27,14 @@ AC_TYPE_SSIZE_T
 AC_FUNC_MALLOC
 AC_FUNC_REALLOC
 AC_CHECK_FUNCS([strcasecmp strerror])
+
+if test "x$USE_MAINTAINER_MODE" = "xyes"; then
+	build_docs=yes
+else
+	build_docs=no
+fi
+
+AM_CONDITIONAL(BUILD_DOCS, test $build_docs = yes)
 
 AC_ARG_ENABLE(debug,
 			  [  --enable-debug          enable debugging information],
@@ -46,5 +56,6 @@ fi
 AM_CONDITIONAL(WITH_OPENSSL, [ test "${enable_ssl}" = yes ])
 
 AC_CONFIG_FILES([Makefile
-                 src/Makefile])
+                 src/Makefile
+                 doc/Makefile])
 AC_OUTPUT
