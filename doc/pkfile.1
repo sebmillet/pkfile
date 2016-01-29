@@ -4,7 +4,7 @@
 
 .SH NAME
 .TP
-pkfile \- a program to display and work on PKCS files.
+pkfile \- a program to display and work on PKCS files
 
 .SH SYNOPSIS
 .TP
@@ -17,63 +17,63 @@ pkfile \- a program to display and work on PKCS files.
 Otherwise the detailed specifications of DER encoding are here:
 http://www.itu.int/ITU-T/studygroups/com17/languages/X.690-0207.pdf
 .TP
-\fIpkfile\fP can read PEM encoded files and can also decrypt it as needed.
+\fIpkfile\fP can read PEM encoded files and can also decrypt it as needed
 .br
-pkfile will detect the encoding used and manage input as appropriate, unless option \fB-f\fP is used.
+pkfile will detect the encoding used and manage input as appropriate, unless option \fB-f\fP is used
 .SH OPTIONS
 .TP
-If FILE is not specified, read the standard input.
+If FILE is not specified, read the standard input
 .TP
 .B \-v\ \-\-version
-Display version information and exit.
+Display version information and exit
 .TP
 .B \-V,\ \-\-verbose
-Be more talkative.
+Be more talkative
 .TP
 \fB\-l,\ \-\-level\fP \fIn\fP
-Limit hierarchical display to depth \fIn\fP.
+Limit hierarchical display to depth \fIn\fP
 .TP
 .B \-\-offset
-Display file offset in output, before each sequence or data block.
+Display file offset in output, before each sequence or data block
 .TP
 .B \-\-flat
-Display content without tree-like hierarchical structure.
+Display content without tree-like hierarchical structure
 .TP
 \fB\-p, \-\-password\fP \fIpwd\fP
-Set password to \fIpwd\fP when decrypting a PEM encoded input.
+Set password to \fIpwd\fP when decrypting a PEM encoded input
 .TP
 .B \-x, \-\-extract
-Instead of displaying input content, output the binary content. If used with PEM encoded inputs, it turns \fBpkfile\fP into a PEM to DER converter. If used along with option \fB-n\fP, it will extract a sub-part of input.
+Instead of displaying input content, output the binary content. If used with PEM encoded inputs, it turns \fBpkfile\fP into a PEM to DER converter. If used along with option \fB-n\fP, it will extract a sub-part of input
 .TP
 \fB\-f, \-\-inform\fP \fIpem|der\fP
-Enforce (instead of auto-detection) the input format. Either \fIpem\fP or \fIder\fP.
+Enforce (instead of auto-detection) the input format. Either \fIpem\fP or \fIder\fP
 .TP
 \fB\-n, \-\-node\fP \fInode\fP
 Display (or extract with option \fB-x\fP) only the node \fIn\fP. In the regular output (without \fB-x\fP option), nodes are displayed before each sequence or block of data. They are made of integers separated by a dot, as in \fI1.3.1\fP
 .TP
 \fB\-N, \-\-node-open\fP \fInode\fP
-Take the data content of \fInode\fP as the DER encoded input to parse. See description of option \fB-n\fP for the node format.
+Take the data content of \fInode\fP as the DER encoded input to parse. See description of option \fB-n\fP for the node format
 .TP
 \fB\-o, \-\-out\fP \fIfile\fP
-Output to \fIfile\fP instead of standard output.
+Output to \fIfile\fP instead of standard output
 .TP
 \fB\-\-charset\fP \fIcharset\fP
-For hierarchical display, assume \fIcharset\fP to display tree elements (vertical or horizontal bar and the like). This option is managed exactly as the one of the \fItree\fP program.
+For hierarchical display, assume \fIcharset\fP to display tree elements (vertical or horizontal bar and the like). This option is managed exactly as the one of the \fItree\fP program
 .TP
 .B \-\-
-End of options, the next option is a file.
+End of options, the next option is a file
 .SH INITIALIZATION FILES
 .TP
-None.
+None
 .SH ENVIRONMENT VARIABLES
 .TP
 The following environment variable is processed by \fBpkfile\fP:
 .TP
 .B PKFILE_CHARSET
-Like --charset option.
+Like --charset option
 .SH AUTHOR
 .TP
-Written by Sébastien Millet <milletseb@laposte.net>.
+Written by Sébastien Millet <milletseb@laposte.net>
 .SH ACKNOWLEDGEMENTS
 .TP
 .B tree

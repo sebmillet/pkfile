@@ -43,6 +43,7 @@
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
 #else
+#include <termios.h>
 #include <langinfo.h>
 #endif
 
@@ -289,9 +290,36 @@ char *cb_password_pre()
 	char *password;
 
 	if (!opt_password) {
-		fprintf(stderr, "Please type in the password:\n");
+
+#if defined(_WIN32) || defined(_WIN64)
+		HANDLE h;
+		DWORD console_mode;
+		h = GetStdHandle(STD_INPUT_HANDLE);
+		if (!GetConsoleMode(h, &console_mode))
+			return NULL;
+		if (!SetConsoleMode(h, console_mode & ~ENABLE_ECHO_INPUT))
+			return NULL;
+#else
+		struct termios current, new;
+		if (tcgetattr(fileno(stdin), &current) != 0)
+			return NULL;
+		new = current;
+		new.c_lflag &= ~ECHO;
+		if (tcsetattr(fileno(stdin), TCSAFLUSH, &new) != 0)
+			return NULL;
+#endif
+
+		printf("Please type in the password:\n");
 		char *readpwd = malloc(PASSWORD_MAX_BYTES);
-		if (!fgets(readpwd, PASSWORD_MAX_BYTES, stdin)) {
+		char *r = fgets(readpwd, PASSWORD_MAX_BYTES, stdin);
+
+#if defined(_WIN32) || defined(_WIN64)
+		SetConsoleMode(h, console_mode);
+#else
+		tcsetattr(fileno(stdin), TCSAFLUSH, &current);
+#endif
+
+		if (!r) {
 			free(readpwd);
 			return NULL;
 		}
