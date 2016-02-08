@@ -15,9 +15,6 @@
  * =====================================================================================
  */
 
-/*#define PACKAGE_NAME "pkfile"*/
-/*#define PACKAGE_STRING "pkfile 0.1"*/
-
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #else
@@ -51,6 +48,7 @@
 
 #ifdef HAS_LIB_OPENSSL
 #include <openssl/objects.h>
+#include <openssl/sha.h>
 #include "ppem.h"
 #endif
 
@@ -74,7 +72,6 @@ char *opt_file_out = NULL;
 int out_level = L_NORMAL;
 
 const char *opt_password = NULL;
-
 const char *opt_inform = NULL;
 int assume_pem = FALSE;
 int assume_der = FALSE;
@@ -82,12 +79,15 @@ int assume_der = FALSE;
 int opt_bin = FALSE;
 char *opt_node = NULL;
 char *opt_node_open = NULL;
-
 int opt_print_offset = FALSE;
-
 const char *opt_charset = NULL;
-
 int opt_flat = FALSE;
+
+#define H_UNDEF  0
+#define H_SHA1   1
+#define H_SHA256 2
+#define H_SHA512 3
+int opt_hash_algo = H_UNDEF;
 
 typedef struct nodes_t nodes_t;
 struct nodes_t {
@@ -266,6 +266,9 @@ static void usage()
 		"                       on NODE data assuming it is der-encoded.\n"
 		"  -o  --out            output to file\n"
 		"      --charset X      use 'X' as charset for tree-like display\n"
+		"      --sha1           calculate sha1 hash of input\n"
+		"      --sha256         calculate sha256 hash of input\n"
+		"      --sha512         calculate sha512 hash of input\n"
 		"  --                   end of parameters, next option is file name\n"
 		"If FILE is not specified, read standard input.\n"
 	);
@@ -751,7 +754,7 @@ int manage_pkdata(const unsigned char *pkdata, size_t pkdata_len, const nodes_t 
 			outln_error(seq->errmsg);
 			seq_clear_error(seq);
 			r = 0;
-		} else if (!matched_at_least_once) {
+		} else if (!matched_at_least_once && nodes) {
 			outln_error("Non-existent node");
 			r = 0;
 		}
@@ -982,9 +985,48 @@ const struct linedraw *initlinedraw(const char *charset, int flag)
  */
 
 
+#ifdef HAS_LIB_OPENSSL
+void hash(unsigned char *data_in, ssize_t size, int hash_algo, FILE *fout)
+{
+	unsigned char *(*func)(const unsigned char *d, size_t n, unsigned char *md) = NULL;
+	int bytes;
+
+	DBG("Calculating hash of %lu byte(s)\n", size)
+
+	switch (hash_algo) {
+		case H_SHA1:
+			func = SHA1;
+			bytes = SHA_DIGEST_LENGTH;
+			DBG("Hash algo: SHA1\n")
+			break;
+		case H_SHA256:
+			func = SHA256;
+			bytes = SHA256_DIGEST_LENGTH;
+			DBG("Hash algo: SHA256\n")
+			break;
+		case H_SHA512:
+			func = SHA512;
+			bytes = SHA512_DIGEST_LENGTH;
+			DBG("Hash algo: SHA512\n")
+			break;
+		default:
+			FATAL_ERROR("Unknown hash algo: %d", hash_algo);
+	}
+
+	unsigned char *h = (unsigned char *)malloc(bytes);
+	func(data_in, size, h);
+	int i;
+	for (i = 0; i < bytes; ++i) {
+		fprintf(fout, "%02x", (unsigned char)h[i]);
+	}
+	fprintf(fout, "\n");
+	free(h);
+}
+#endif
+
 static void opt_check(unsigned int n, const char *opt)
 {
-	static int defined_options[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	static int defined_options[13] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 	assert(n < sizeof(defined_options) / sizeof(*defined_options));
 
@@ -1018,6 +1060,7 @@ if (++a >= argc) { \
 	char shortopt[3];
 	int shortopt_nb = 0;
 	int shortopt_i = -1;
+
 	while (a < argc) {
 		if (shortopt_nb == 0) {
 			if (strlen(argv[a]) >= 2 && argv[a][0] == '-' && argv[a][1] != '-') {
@@ -1084,6 +1127,15 @@ if (++a >= argc) { \
 			opt_check(11, argv[a]);
 			OPT_WITH_VALUE_CHECK
 			opt_charset = argv[a];
+		} else if (!strcmp(argv[a], "--sha1")) {
+			opt_check(12, argv[a]);
+			opt_hash_algo = H_SHA1;
+		} else if (!strcmp(argv[a], "--sha256")) {
+			opt_check(12, argv[a]);
+			opt_hash_algo = H_SHA256;
+		} else if (!strcmp(argv[a], "--sha512")) {
+			opt_check(12, argv[a]);
+			opt_hash_algo = H_SHA512;
 		} else if (argv[a][0] == '-') {
 			if (strcmp(argv[a], "--")) {
 				fprintf(stderr, "%s: invalid option -- '%s'\n", PACKAGE_NAME, argv[a]);
@@ -1137,6 +1189,25 @@ if (++a >= argc) { \
 			a = -1;
 		}
 	}
+	if (a >= 0 && opt_hash_algo != H_UNDEF) {
+#ifndef HAS_LIB_OPENSSL
+		fprintf(stderr, "%s: this version does not support calculating hashes\n", PACKAGE_NAME);
+		exit(-10);
+#endif
+		if (opt_bin) {
+			fprintf(stderr, "%s: option -x not compatible with a hash option\n", PACKAGE_NAME);
+			a = -1;
+		} else if (opt_node) {
+			fprintf(stderr, "%s: option -n not compatible with a hash option\n", PACKAGE_NAME);
+			a = -1;
+		} else if (opt_node_open) {
+			fprintf(stderr, "%s: option -N not compatible with a hash option\n", PACKAGE_NAME);
+			a = -1;
+		} else if (opt_inform) {
+			fprintf(stderr, "%s: option -f not compatible with a hash option\n", PACKAGE_NAME);
+			a = -1;
+		}
+	}
 
 	if (a < 0)
 		usage();
@@ -1172,10 +1243,6 @@ const size_t STDIN_BUFSIZE = 1024;
 			outln_error("bad nodes list");
 			usage();
 		}
-	}
-	if (opt_bin && opt_print_offset) {
-		outln_error("--offset cannot be used with option -b");
-		usage();
 	}
 
 	const char *charset = NULL;
@@ -1261,44 +1328,46 @@ const size_t STDIN_BUFSIZE = 1024;
 		}
 		fclose(fin);
 	}
-	outln(L_VERBOSE, "Parsing input of %li byte(s)", size);
 
-	if (data_in) {
-			/* *VERY IMPORTANT* */
-			/* WARNING
-			 * This character is used to mark end of buffer in the case the input
-			 * is PEM format. */
-		data_in[size] = '\0';
-	}
+	const unsigned char *pkdata = NULL;
+	size_t pkdata_len = 0;
+	if (opt_hash_algo == H_UNDEF) {
+		outln(L_VERBOSE, "Parsing input of %li byte(s)", size);
+		if (data_in) {
+				/* *VERY IMPORTANT* */
+				/* WARNING
+				 * This character is used to mark end of buffer in the case the input
+				 * is PEM format. */
+			data_in[size] = '\0';
+		}
 
-	int data_in_is_pem = FALSE;
-	size_t data_out_len = 0;
+		int data_in_is_pem = FALSE;
+		size_t data_out_len = 0;
 
 #ifdef HAS_LIB_OPENSSL
-	if (!assume_der) {
-		outln(L_VERBOSE, "Trying to parse input data against PEM rules");
-		pem_ctrl_t *pem = pem_construct_pem_ctrl(data_in);
-		pem_regcb_password(pem, cb_password_pre, cb_password_post);
-		pem_regcb_loop_top(pem, cb_loop_top);
-		pem_regcb_loop_decrypt(pem, cb_loop_decrypt);
-		data_in_is_pem = pem_walker(pem, &data_out, &data_out_len);
-		pem_destruct_pem_ctrl(pem);
-	}
+		if (!assume_der) {
+			outln(L_VERBOSE, "Trying to parse input data against PEM rules");
+			pem_ctrl_t *pem = pem_construct_pem_ctrl(data_in);
+			pem_regcb_password(pem, cb_password_pre, cb_password_post);
+			pem_regcb_loop_top(pem, cb_loop_top);
+			pem_regcb_loop_decrypt(pem, cb_loop_decrypt);
+			data_in_is_pem = pem_walker(pem, &data_out, &data_out_len);
+			pem_destruct_pem_ctrl(pem);
+		}
 #endif
 
-	const unsigned char *pkdata;
-	size_t pkdata_len;
-	if (assume_der || (!data_in_is_pem && !assume_pem)) {
-		outln(L_VERBOSE, "Will use original data as pk input (assuming der-encoded content)");
-		pkdata = data_in;
-		pkdata_len = size;
-	} else {
-		outln(L_VERBOSE, "Will use pem decoded/decrypted data as pk input");
-		pkdata = data_out;
-		pkdata_len = data_out_len;
-		if (!pkdata || data_out_len == 0) {
-			outln_error("No PEM data available");
-			goto main_error;
+		if (assume_der || (!data_in_is_pem && !assume_pem)) {
+			outln(L_VERBOSE, "Will use original data as pk input (assuming der-encoded content)");
+			pkdata = data_in;
+			pkdata_len = size;
+		} else {
+			outln(L_VERBOSE, "Will use pem decoded/decrypted data as pk input");
+			pkdata = data_out;
+			pkdata_len = data_out_len;
+			if (!pkdata || data_out_len == 0) {
+				outln_error("No PEM data available");
+				goto main_error;
+			}
 		}
 	}
 
@@ -1313,7 +1382,15 @@ const size_t STDIN_BUFSIZE = 1024;
 		}
 	}
 
-	retval = (manage_pkdata(pkdata, pkdata_len, nodes, analyze_embedded_data, fout) == 1 ? 0 : -999);
+	if (opt_hash_algo == H_UNDEF) {
+		retval = (manage_pkdata(pkdata, pkdata_len, nodes, analyze_embedded_data, fout) == 1 ? 0 : -999);
+	} else {
+#ifdef HAS_LIB_OPENSSL
+		hash(data_in, size, opt_hash_algo, fout);
+#else
+		FATAL_ERROR("Serious error");
+#endif
+	}
 
 main_error:
 
