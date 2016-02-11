@@ -49,6 +49,10 @@
 #ifdef HAS_LIB_OPENSSL
 #include <openssl/objects.h>
 #include <openssl/sha.h>
+#include <openssl/md4.h>
+#include <openssl/md5.h>
+#include <openssl/ripemd.h>
+#include <openssl/whrlpool.h>
 #include "ppem.h"
 #endif
 
@@ -83,10 +87,7 @@ int opt_print_offset = FALSE;
 const char *opt_charset = NULL;
 int opt_flat = FALSE;
 
-#define H_UNDEF  0
-#define H_SHA1   1
-#define H_SHA256 2
-#define H_SHA512 3
+enum {H_UNDEF, H_SHA1, H_SHA224, H_SHA256, H_SHA384, H_SHA512, H_MD4, H_MD5, H_RIPEMD160, H_WHIRLPOOL};
 int opt_hash_algo = H_UNDEF;
 
 typedef struct nodes_t nodes_t;
@@ -247,7 +248,10 @@ ssize_t file_get_size(const char* filename)
 static void usage()
 {
 	fprintf(stderr, "Usage: %s [options] [FILE]\n", PACKAGE_NAME);
-	fprintf(stderr, "Display or extract sequences inside PKCS files.\n"
+	fprintf(stderr, "Display or extract sequences inside PKCS files\n"
+		"Can also calculate hash of input\n"
+		"\n"
+		"- Regular execution (no hash calculation option):\n"
 		"This program will automatically detect whether PEM format\n"
 		"is being used, or DER, unless started with --inform.\n"
 		"  -h  --help           print this usage and exit\n"
@@ -266,11 +270,14 @@ static void usage()
 		"                       on NODE data assuming it is der-encoded.\n"
 		"  -o  --out            output to file\n"
 		"      --charset X      use 'X' as charset for tree-like display\n"
-		"      --sha1           calculate sha1 hash of input\n"
-		"      --sha256         calculate sha256 hash of input\n"
-		"      --sha512         calculate sha512 hash of input\n"
 		"  --                   end of parameters, next option is file name\n"
 		"If FILE is not specified, read standard input.\n"
+		"\n"
+		"- Hash calculation options\n"
+		"When launched with an option to calculate a hash, the input is taken as\n"
+		"is (no decoding of PEM content). List of hash options:\n"
+		"  --sha1, --sha224, --sha256, --sha384, --sha512, --md4, --md5\n"
+		"  --ripemd160, --whirlpool\n"
 	);
 	exit(0);
 }
@@ -988,27 +995,29 @@ const struct linedraw *initlinedraw(const char *charset, int flag)
 #ifdef HAS_LIB_OPENSSL
 void hash(unsigned char *data_in, ssize_t size, int hash_algo, FILE *fout)
 {
+const int SHA1_DIGEST_LENGTH = SHA_DIGEST_LENGTH;
+
+#define HH_CODE(algo) \
+	case H_##algo: \
+		func = (unsigned char *(*)(const unsigned char *d, size_t n, unsigned char *md))algo; \
+		bytes = algo##_DIGEST_LENGTH; \
+		break;
+
 	unsigned char *(*func)(const unsigned char *d, size_t n, unsigned char *md) = NULL;
 	int bytes;
 
 	DBG("Calculating hash of %lu byte(s)\n", size)
 
 	switch (hash_algo) {
-		case H_SHA1:
-			func = SHA1;
-			bytes = SHA_DIGEST_LENGTH;
-			DBG("Hash algo: SHA1\n")
-			break;
-		case H_SHA256:
-			func = SHA256;
-			bytes = SHA256_DIGEST_LENGTH;
-			DBG("Hash algo: SHA256\n")
-			break;
-		case H_SHA512:
-			func = SHA512;
-			bytes = SHA512_DIGEST_LENGTH;
-			DBG("Hash algo: SHA512\n")
-			break;
+		HH_CODE(SHA1)
+		HH_CODE(SHA224)
+		HH_CODE(SHA256)
+		HH_CODE(SHA384)
+		HH_CODE(SHA512)
+		HH_CODE(MD4)
+		HH_CODE(MD5)
+		HH_CODE(RIPEMD160)
+		HH_CODE(WHIRLPOOL)
 		default:
 			FATAL_ERROR("Unknown hash algo: %d", hash_algo);
 	}
@@ -1130,12 +1139,30 @@ if (++a >= argc) { \
 		} else if (!strcmp(argv[a], "--sha1")) {
 			opt_check(12, argv[a]);
 			opt_hash_algo = H_SHA1;
+		} else if (!strcmp(argv[a], "--sha224")) {
+			opt_check(12, argv[a]);
+			opt_hash_algo = H_SHA224;
 		} else if (!strcmp(argv[a], "--sha256")) {
 			opt_check(12, argv[a]);
 			opt_hash_algo = H_SHA256;
+		} else if (!strcmp(argv[a], "--sha384")) {
+			opt_check(12, argv[a]);
+			opt_hash_algo = H_SHA384;
 		} else if (!strcmp(argv[a], "--sha512")) {
 			opt_check(12, argv[a]);
 			opt_hash_algo = H_SHA512;
+		} else if (!strcmp(argv[a], "--md4")) {
+			opt_check(12, argv[a]);
+			opt_hash_algo = H_MD4;
+		} else if (!strcmp(argv[a], "--md5")) {
+			opt_check(12, argv[a]);
+			opt_hash_algo = H_MD5;
+		} else if (!strcmp(argv[a], "--ripemd160")) {
+			opt_check(12, argv[a]);
+			opt_hash_algo = H_RIPEMD160;
+		} else if (!strcmp(argv[a], "--whirlpool")) {
+			opt_check(12, argv[a]);
+			opt_hash_algo = H_WHIRLPOOL;
 		} else if (argv[a][0] == '-') {
 			if (strcmp(argv[a], "--")) {
 				fprintf(stderr, "%s: invalid option -- '%s'\n", PACKAGE_NAME, argv[a]);

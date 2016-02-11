@@ -73,6 +73,15 @@ OPTIONS
 	      ments (vertical or horizontal bar and the like). This option  is
 	      managed exactly as the one of the tree program
 
+       --sha1,	 --sha224,   --sha256,	 --sha384,   --sha512,	--md4,	--md5,
+       --ripemd160, --whirlpool
+	      Prints the input hash with the corresponding hash algorithm
+
+	      Note
+	      When launched with a hash calculation option, the input is taken
+	      as  is: a PEM-encoded input will not be decoded before calculat‐
+	      ing the sum
+
        --     End of options, the next option is a file
 
 INITIALIZATION FILES
@@ -88,8 +97,8 @@ AUTHOR
        Written by Sébastien Millet <milletseb@laposte.net>
 
 ACKNOWLEDGEMENTS
-       tree   The  characters  output  to display a hierarchical structure are
-	      tuned depending on the charset. The code managing it got	copied
+       tree   The characters output to display a  hierarchical	structure  are
+	      tuned  depending on the charset. The code managing it got copied
 	      from tree source, with a few updates.
 
 

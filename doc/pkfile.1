@@ -60,6 +60,14 @@ Output to \fIfile\fP instead of standard output
 \fB\-\-charset\fP \fIcharset\fP
 For hierarchical display, assume \fIcharset\fP to display tree elements (vertical or horizontal bar and the like). This option is managed exactly as the one of the \fItree\fP program
 .TP
+.B \-\-sha1, \-\-sha224, \-\-sha256, \-\-sha384, \-\-sha512, \-\-md4, \-\-md5, \-\-ripemd160, \-\-whirlpool
+Prints the input hash with the corresponding hash algorithm
+.TP
+.RE
+.I Note
+.br
+When launched with a hash calculation option, the input is taken as is: a PEM-encoded input will not be decoded before calculating the sum
+.TP
 .B \-\-
 End of options, the next option is a file
 .SH INITIALIZATION FILES

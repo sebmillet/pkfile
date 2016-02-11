@@ -73,6 +73,17 @@ Take the data content of <I>node</I> as the DER encoded input to parse. See desc
 Output to <I>file</I> instead of standard output
 <DT><B>--charset</B> <I>charset</I><DD>
 For hierarchical display, assume <I>charset</I> to display tree elements (vertical or horizontal bar and the like). This option is managed exactly as the one of the <I>tree</I> program
+<DT><B>--sha1, --sha224, --sha256, --sha384, --sha512, --md4, --md5, --ripemd160, --whirlpool</B>
+
+<DD>
+Prints the input hash with the corresponding hash algorithm
+<DT>
+<DD>
+<I>Note</I>
+
+<BR>
+
+When launched with a hash calculation option, the input is taken as is: a PEM-encoded input will not be decoded before calculating the sum
 <DT><B>--</B>
 
 <DD>
@@ -128,6 +139,6 @@ The characters output to display a hierarchical structure are tuned depending on
 This document was created by
 <A HREF="/cgi-bin/man/man2html">man2html</A>,
 using the manual pages.<BR>
-Time: 21:37:30 GMT, January 29, 2016
+Time: 20:35:32 GMT, February 11, 2016
 </BODY>
 </HTML>
