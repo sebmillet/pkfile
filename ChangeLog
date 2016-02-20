@@ -2,6 +2,7 @@
 
 	* Version 0.2 built
 	* Provides hash calculation options
+	* Fixes a bug with -n or -N option causing Windows crash
 
 2016-01-29 Sébastien Millet <milletseb@laposte.net>
 

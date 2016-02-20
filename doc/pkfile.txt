@@ -104,4 +104,4 @@ ACKNOWLEDGEMENTS
 
 
 
-January 2016			  version 0.1			     pkfile(1)
+February 2016			  version 0.2			     pkfile(1)
