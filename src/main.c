@@ -683,6 +683,7 @@ nodes_t *parse_opt_node(const char *sarg)
 
 			nodes_t *nnew = malloc(sizeof(nodes_t));
 			nnew->index = n;
+			nnew->child = NULL;
 			DBG("Node: %d\n", n)
 			if (!nhead) {
 				assert(!ntail);
@@ -1271,6 +1272,18 @@ const size_t STDIN_BUFSIZE = 1024;
 			usage();
 		}
 	}
+
+#ifdef DEBUG
+	if (!nodes) {
+		DBG("nodes is NULL\n")
+	}
+	nodes_t *nd = nodes;
+	int n = 1;
+	while (nd) {
+		DBG("nodes[%d] = %d\n", n++, nd->index)
+		nd = nd->child;
+	}
+#endif
 
 	const char *charset = NULL;
 	char buf[100];
