@@ -14,7 +14,7 @@
 #define PACKAGE_NAME "pkfile"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "pkfile 0.1"
+#define PACKAGE_STRING "pkfile 0.2"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "pkfile"
@@ -23,8 +23,8 @@
 #define PACKAGE_URL ""
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "0.1"
+#define PACKAGE_VERSION "0.2"
 
 /* Version number of package */
-#define VERSION "0.1"
+#define VERSION "0.2"
 

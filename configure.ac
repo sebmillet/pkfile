@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.69])
-AC_INIT([pkfile], [0.1], [milletseb@laposte.net])
+AC_INIT([pkfile], [0.2], [milletseb@laposte.net])
 AC_CONFIG_SRCDIR([src/pkfile.c])
 AC_CONFIG_AUX_DIR([admin])
 AC_CONFIG_HEADERS([config.h])
