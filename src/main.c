@@ -39,6 +39,10 @@
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
+
+#include <io.h>
+#include <fcntl.h>
+
 #else
 #include <termios.h>
 #include <langinfo.h>
@@ -1413,7 +1417,16 @@ const size_t STDIN_BUFSIZE = 1024;
 
 	if (!opt_file_out) {
 		DBG("Output to stdout\n")
+
+#if defined(_WIN32) || defined(_WIN64)
+		if (opt_bin) {
+			setmode(_fileno(stdout), O_BINARY);
+			DBG("Setting stdout to binary mode\n")
+		}
+#endif
+
 		fout = stdout;
+
 	} else {
 		DBG("Output to file %s\n", opt_file_out)
 		if (!(fout = fopen(opt_file_out, "wb"))) {
