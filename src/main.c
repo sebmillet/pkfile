@@ -217,10 +217,19 @@ char *s_strncpy(char *dest, const char *src, size_t n)
 	/* The define below triggers an error if usual strncpy is used */
 #define strncpy(a, b, c) ErrorDontUse_strncpy_Use_s_strncpy_Instead
 
-char *s_strncat(char *dest, const char *src, size_t n)
+char *s_strncat(char *dest, const char *src, size_t dest_len)
 {
-	strncat(dest, src, n - 1);
-	dest[n - 1] = '\0';
+	size_t l = strlen(dest);
+	assert(l < dest_len);
+
+	size_t n = dest_len - l - 1;
+	if (n >= 1)
+		strncat(dest, src, n);
+
+		/* strncat manual says dest will always get a null byte at the end
+		 * but I want something robust across systems and time... */
+	dest[dest_len - 1] = '\0';
+
 	return dest;
 }
 	/* The define below triggers an error if usual strncat is used */
@@ -487,6 +496,7 @@ void node2str(char *buf, size_t buf_len, const seq_t *seq_head, int is_data)
 		} else {
 			snprintf(buf2, sizeof(buf2), ".%d", s->index);
 		}
+
 		s_strncat(buf, buf2, buf_len);
 	}
 }
